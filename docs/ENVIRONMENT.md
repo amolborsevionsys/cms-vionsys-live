@@ -12,8 +12,8 @@ DATABASE_URL="mongodb://localhost:27017/vionsys_cms"
 JWT_SECRET="vionsys-cms-jwt-super-secret-key-2026"
 
 # Frontend website domains for URL previews & webhooks
-VIONSYS_FRONTEND_BASE_URL="https://vionsys.com"
-CMS_BASE_URL="https://cms.vionsys.com"
+VIONSYS_FRONTEND_BASE_URL="https://www.vionsys.com"
+CMS_BASE_URL="https://cms-vionsys-live.vercel.app"
 
 # Revalidation Webhook secrets
 FRONTEND_REVALIDATE_URL="https://www.vionsys.com/api/revalidate/cms"
