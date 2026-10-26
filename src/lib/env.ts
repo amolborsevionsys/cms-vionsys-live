@@ -4,7 +4,7 @@ export const env = {
   VIONSYS_FRONTEND_BASE_URL: process.env.VIONSYS_FRONTEND_BASE_URL || 'https://www.vionsys.com',
   FRONTEND_REVALIDATE_URL: process.env.FRONTEND_REVALIDATE_URL || 'https://www.vionsys.com/api/revalidate/cms',
   FRONTEND_REVALIDATE_SECRET: process.env.FRONTEND_REVALIDATE_SECRET || 'vionsys-cms-revalidate-secret-2026',
-  CMS_BASE_URL: process.env.CMS_BASE_URL || 'https://cms.vionsys.com',
+  CMS_BASE_URL: process.env.CMS_BASE_URL || 'https://cms-vionsys-live.vercel.app',
   NODE_ENV: process.env.NODE_ENV || 'development',
 };
 

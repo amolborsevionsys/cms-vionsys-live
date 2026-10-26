@@ -35,7 +35,21 @@ While logged in, open:
 Shows which variables are configured, their source (`env` / `default` / `missing`), and masked values for secrets.
 
 In local development only, append `?reveal=1` to see full raw values.
-```
+
+## Vercel deployment
+
+Use this repository root as the Vercel project root (the folder that contains `package.json`, `next.config.ts`, and `src/app/`).
+
+| Setting | Value |
+|--------|--------|
+| Git repository | `pawanvionsys/cms-vionsys-live` (or this repo mirrored to your org) |
+| Production branch | `main` |
+| **Root Directory** | **Leave empty** — do not set `src`, `docs`, or `cms` |
+| Build command | `npm run build` (runs Prisma generate, `db push`, then `next build`) |
+
+If the build fails with **“Couldn't find any `pages` or `app` directory”**, the Root Directory is almost always wrong: Vercel is building a subfolder that is not the Next.js app. Clear **Root Directory** in **Project Settings → General** and redeploy.
+
+Required Vercel environment variables (Production and Preview): `DATABASE_URL`, `JWT_SECRET`, `REGION`, `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, plus revalidation URLs/secrets as needed.
 
 ## Running Locally
 
