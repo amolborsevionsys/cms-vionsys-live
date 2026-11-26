@@ -9,12 +9,15 @@ interface RichTextEditorProps {
   initialJson: any;
   onChange: (html: string, json: any, text: string) => void;
   placeholder?: string;
+  /** Smaller editor for use inside page-builder blocks. */
+  compact?: boolean;
 }
 
 export function RichTextEditor({
   initialJson,
   onChange,
-  placeholder = 'Start writing your premium B2B content...'
+  placeholder = 'Start writing your premium B2B content...',
+  compact = false,
 }: RichTextEditorProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
@@ -253,7 +256,7 @@ export function RichTextEditor({
   };
 
   return (
-    <div className="border border-slate-200 rounded-xl bg-white overflow-hidden flex flex-col flex-1 h-full shadow-xs min-h-[450px]">
+    <div className={`border border-slate-200 rounded-xl bg-white overflow-hidden flex flex-col flex-1 h-full shadow-xs ${compact ? 'min-h-[220px]' : 'min-h-[450px]'}`}>
       {/* Editor Toolbar */}
       <div className="border-b border-slate-100 p-2.5 flex flex-wrap items-center justify-between gap-1 bg-slate-50/50 select-none">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -291,7 +294,7 @@ export function RichTextEditor({
       </div>
 
       {/* Editor Content Box */}
-      <div className="flex-1 overflow-y-auto px-12 py-10 prose prose-slate max-w-none focus:outline-hidden prose-sm prose-indigo leading-relaxed">
+      <div className={`flex-1 overflow-y-auto prose prose-slate max-w-none focus:outline-hidden prose-sm prose-indigo leading-relaxed ${compact ? 'px-5 py-4' : 'px-12 py-10'}`}>
         {isMounted ? (
           <div ref={containerRef} className="editorjs-wrapper text-slate-700" />
         ) : (

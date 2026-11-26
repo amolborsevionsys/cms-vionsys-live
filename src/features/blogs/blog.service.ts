@@ -8,6 +8,7 @@ import { parseHeadingOutline } from '../../lib/heading-outline';
 import { hasPermission } from '../../config/permissions';
 import { AppError } from '../../lib/errors';
 import { BlogMapper } from './blog.mapper';
+import { deleteAllSourcesOps } from '../ai/rag.service';
 import { RevalidationService } from '../publishing/revalidation.service';
 import { createDefaultContentMeta } from '../../lib/content-meta';
 import {
@@ -368,6 +369,8 @@ export class BlogService {
     }
 
     await prisma.$transaction([
+      // Imported documents and their Ask AI search chunks belong to the post.
+      ...deleteAllSourcesOps(id),
       prisma.blogPost.delete({ where: { id } }),
       prisma.activityLog.create({
         data: {

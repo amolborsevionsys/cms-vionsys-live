@@ -26,7 +26,20 @@ import { RichTextEditor } from './RichTextEditor';
 import { EditorSidebar } from './EditorSidebar';
 import { ContentIntelligenceBar } from './ContentIntelligenceBar';
 import { StatusBadge } from '../shared/StatusBadge';
-import { INDUSTRIES_LIST } from '@/config/taxonomy';
+import { CaseStudyBuilder } from '../case-study-builder/CaseStudyBuilder';
+import { AiPanel, type ImportResultPayload } from '../ai/AiPanel';
+import { BlogImportReviewDialog } from '../blog-ai/BlogImportReviewDialog';
+import { appendAnswerToBody, buildBlogUpdates, type BlogSectionId, type BodyMode } from '../blog-ai/apply-blog-import';
+import type { BlogExtraction } from '@/features/blogs/import/blog-import.schema';
+import type { SidebarTab } from './EditorSidebar';
+import { applyTemplate, isTemplateId, resolveLayout } from '@/features/case-studies/layout/layout.utils';
+import type { CaseStudyLayout, TemplateId } from '@/features/case-studies/layout/layout.types';
+import type { CaseStudyExtraction } from '@/features/case-studies/import/import.schema';
+import {
+  buildFieldUpdates,
+  buildImportedLayout,
+  type ImportSectionId,
+} from '../case-study-builder/import/apply-import';
 import {
   getBlogLiveUrl,
   getCaseStudyLiveUrl,
@@ -86,7 +99,12 @@ export function ContentEditorShell({
     resultStats: initialData?.resultStats || [],
     processSteps: initialData?.processSteps || [],
     mediaGallery: initialData?.mediaGallery || [],
-    faqs: initialData?.faqs || []
+    faqs: initialData?.faqs || [],
+    // Case-study page builder
+    approachHtml: initialData?.approachHtml || '',
+    approachJson: initialData?.approachJson || {},
+    templateId: (isTemplateId(initialData?.templateId) ? initialData.templateId : 'classic') as TemplateId,
+    layout: (contentType === 'case-study' ? resolveLayout(initialData?.layout) : null) as CaseStudyLayout | null,
   });
 
   // Tiptap Content
@@ -146,10 +164,10 @@ export function ContentEditorShell({
 
   // Lifted Sidebar States for Smooth Synchronized Animations
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<'doc' | 'seo' | 'aeo' | 'schema' | 'publish'>('doc');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('doc');
 
   const scrollToField = (fieldKey: string) => {
-    let targetTab: 'doc' | 'seo' | 'aeo' | 'schema' | 'publish' | null = null;
+    let targetTab: SidebarTab | null = null;
     let inputId = '';
 
     if (fieldKey === 'title') {
@@ -214,6 +232,73 @@ export function ContentEditorShell({
     setSaveStatus('unsaved');
   };
 
+  // Functional updates so rapid drag events never work from a stale layout.
+  const updateLayout = (updater: (prev: CaseStudyLayout) => CaseStudyLayout) => {
+    setDocData(prev => {
+      if (!prev.layout) return prev;
+      const next = { ...prev, layout: updater(prev.layout) };
+      docDataRef.current = { ...docDataRef.current, docData: next };
+      return next;
+    });
+    hasChangesRef.current = true;
+    setSaveStatus('unsaved');
+  };
+
+  // --- Blog AI import / Ask AI ---------------------------------------------------
+  // Bumping this remounts the blog's rich-text editor so it shows content set from outside.
+  const [bodyVersion, setBodyVersion] = useState(0);
+  const [blogImportReview, setBlogImportReview] = useState<ImportResultPayload<BlogExtraction> | null>(null);
+
+  const setBody = (body: { json: unknown; html: string; text: string }) => {
+    setContentJson(body.json);
+    setContentHtml(body.html);
+    setContentText(body.text);
+    setBodyVersion(v => v + 1);
+  };
+
+  const applyBlogImport = (extraction: BlogExtraction, selected: Set<BlogSectionId>, bodyMode: BodyMode) => {
+    const updates = buildBlogUpdates(extraction, selected, bodyMode, contentJson, categories);
+    Object.entries(updates.fields).forEach(([field, value]) => updateField(field, value));
+    if (updates.body) setBody(updates.body);
+    if (updates.seo) setSeo(prev => ({ ...prev, ...updates.seo }));
+    if (updates.aeoGeo) setAeoGeo(prev => ({ ...prev, ...updates.aeoGeo }));
+    hasChangesRef.current = true;
+    setSaveStatus('unsaved');
+  };
+
+  const insertAnswerIntoBody = (answer: string) => {
+    setBody(appendAnswerToBody(contentJson, answer));
+    hasChangesRef.current = true;
+    setSaveStatus('unsaved');
+  };
+
+  const hasBodyContent = Boolean(contentText && contentText.trim());
+
+  // Apply AI-imported content (reviewed by the editor) in one state update.
+  const applyImport = (extraction: CaseStudyExtraction, selected: Set<ImportSectionId>, templateId: TemplateId) => {
+    const updates = buildFieldUpdates(extraction, selected, docDataRef.current.docData.ctaButtonUrl);
+    setDocData(prev => {
+      const next = {
+        ...prev,
+        ...updates.fields,
+        ...(updates.approach ? { approachHtml: updates.approach.html, approachJson: updates.approach.json } : {}),
+        templateId,
+        layout: prev.layout ? buildImportedLayout(prev.layout, templateId, extraction, selected) : prev.layout,
+      } as typeof prev;
+      docDataRef.current = { ...docDataRef.current, docData: next };
+      return next;
+    });
+    if (updates.challenge) {
+      setContentHtml(updates.challenge.html);
+      setContentJson(updates.challenge.json);
+      setContentText(updates.challenge.text);
+    }
+    if (updates.seo) setSeo(prev => ({ ...prev, ...updates.seo }));
+    if (updates.keyTakeaways) setAeoGeo(prev => ({ ...prev, keyTakeaways: updates.keyTakeaways as string[] }));
+    hasChangesRef.current = true;
+    setSaveStatus('unsaved');
+  };
+
   const updateSeo = (field: string, value: any) => {
     setSeo(prev => ({ ...prev, [field]: value }));
     hasChangesRef.current = true;
@@ -270,10 +355,15 @@ export function ContentEditorShell({
     if (contentType === 'case-study') {
       body.challengeHtml = activeState.contentHtml;
       body.challengeJson = activeState.contentJson;
-      body.approachHtml = initialData?.approachHtml || '';
-      body.approachJson = initialData?.approachJson || {};
       body.heroImage = activeState.docData.featuredImage ?? null;
       body.heroImageAlt = activeState.docData.featuredImageAlt ?? null;
+    }
+
+    if (contentType === 'blog') {
+      delete body.approachHtml;
+      delete body.approachJson;
+      delete body.templateId;
+      delete body.layout;
     }
 
     if (statusOverride) {
@@ -387,53 +477,6 @@ export function ContentEditorShell({
     return () => window.removeEventListener('blur', handleBlur);
   }, [id]);
 
-  // Case Study section accordion states
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    challenge: true,
-    results: false,
-    testimonial: false,
-    cta: false,
-    faqs: false
-  });
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  const handleAddStat = () => {
-    const current = docData.resultStats || [];
-    updateField('resultStats', [...current, { value: '', label: '', description: '' }]);
-  };
-
-  const handleUpdateStat = (index: number, key: string, val: string) => {
-    const current = [...(docData.resultStats || [])];
-    current[index] = { ...current[index], [key]: val };
-    updateField('resultStats', current);
-  };
-
-  const handleRemoveStat = (index: number) => {
-    const current = [...(docData.resultStats || [])];
-    current.splice(index, 1);
-    updateField('resultStats', current);
-  };
-
-  const handleAddFaq = () => {
-    const current = docData.faqs || [];
-    updateField('faqs', [...current, { question: '', answer: '' }]);
-  };
-
-  const handleUpdateFaq = (index: number, key: string, val: string) => {
-    const current = [...(docData.faqs || [])];
-    current[index] = { ...current[index], [key]: val };
-    updateField('faqs', current);
-  };
-
-  const handleRemoveFaq = (index: number) => {
-    const current = [...(docData.faqs || [])];
-    current.splice(index, 1);
-    updateField('faqs', current);
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/20">
       {/* Editor Top Bar */}
@@ -509,447 +552,89 @@ export function ContentEditorShell({
 
       {/* Editor Inner Layout Workspace */}
       <div className="flex flex-1 overflow-hidden h-[calc(100vh-3.5rem)]">
-        {contentType === 'case-study' ? (
-          /* Structured Card Sections for Case Studies */
-          <div className="flex-1 flex flex-col p-8 overflow-y-auto gap-6 bg-slate-50/20 max-w-4xl mx-auto w-full pb-20">
-            {errorMessage && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-red-700 text-xs font-medium">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                {errorMessage}
-              </div>
-            )}
-
-            {/* Document Title / Header area */}
-            <div className="space-y-2 pb-4 border-b border-slate-100 pl-3 border-l-4 border-l-emerald-400">
-              <input
-                id="document-title-input"
-                type="text"
-                placeholder="Case Study Title (e.g. Scaling HealthTech SaaS Platform)"
-                value={docData.title}
-                onChange={e => {
-                  const val = e.target.value;
-                  updateField('title', val);
-                  if (isNew) {
-                    updateField(
-                      'slug',
-                      val
-                        .toLowerCase()
-                        .replace(/\s+/g, '-')
-                        .replace(/[^\w\-]+/g, '')
-                    );
-                  }
+        {contentType === 'case-study' && docData.layout ? (
+          /* Case-study page builder: toolbox + canvas */
+          <CaseStudyBuilder
+                layout={docData.layout}
+                updateLayout={updateLayout}
+                templateId={docData.templateId}
+                onTemplateChange={templateId => {
+                  updateLayout(prev => applyTemplate(prev, templateId));
+                  updateField('templateId', templateId);
                 }}
-                className="w-full text-2xl font-extrabold text-slate-900 border-none outline-hidden placeholder-slate-200 focus:ring-0 leading-tight focus:border-transparent focus:box-shadow-none"
-              />
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span className="font-medium text-slate-500">https://vionsys.com/case-studies/</span>
-                <input
-                  id="document-slug-input"
-                  type="text"
-                  value={docData.slug}
-                  onChange={e => updateField('slug', e.target.value)}
-                  placeholder="case-study-slug"
-                  className="border-b border-slate-200 hover:border-slate-400 focus:border-indigo-500 outline-hidden pb-0.5 px-0.5 bg-transparent font-semibold text-slate-700"
-                />
-              </div>
-            </div>
-
-            {/* Section 1: Client & Project Details */}
-            <div className="bg-white border border-slate-200 border-l-4 border-l-amber-400 rounded-xl overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => toggleSection('client')}
-                className="w-full flex items-center justify-between p-4 hover:bg-amber-50/40 cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-amber-50 rounded-lg text-amber-600 ring-1 ring-amber-100">
-                    <Briefcase className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Client & Project</span>
-                    <span className="text-[10px] text-slate-400">Define client business profiles and engagement dynamics</span>
-                  </div>
-                </div>
-                {expandedSections.client ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-              
-              {expandedSections.client && (
-                <div className="p-5 border-t border-slate-100 bg-slate-50/10 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Client Name</label>
-                      <input
-                        id="document-client-name-input"
-                        type="text"
-                        placeholder="e.g. Acme Health"
-                        value={docData.clientName}
-                        onChange={e => updateField('clientName', e.target.value)}
-                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                      />
+                ctx={{
+                  doc: docData,
+                  onFieldChange: updateField,
+                  challengeJson: contentJson,
+                  challengeHtml: contentHtml,
+                  onChallengeChange: (html, json, text) => {
+                    setContentHtml(html);
+                    setContentJson(json);
+                    setContentText(text);
+                    hasChangesRef.current = true;
+                    setSaveStatus('unsaved');
+                  },
+                  onApproachChange: (html, json) => {
+                    updateField('approachHtml', html);
+                    updateField('approachJson', json);
+                  },
+                }}
+                caseStudyId={id}
+                onApplyImport={applyImport}
+                header={
+                  <>
+                  {errorMessage && (
+                    <div role="alert" className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-red-700 text-xs font-medium">
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                      {errorMessage}
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Industry</label>
-                      <select
-                        value={docData.industry || ''}
-                        onChange={e => updateField('industry', e.target.value)}
-                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white cursor-pointer"
-                      >
-                        <option value="">Select Industry...</option>
-                        {INDUSTRIES_LIST.map(ind => (
-                          <option key={ind} value={ind}>{ind}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Section 2: Challenge (The Main Editor canvas) */}
-            <div className="bg-white border border-slate-200 border-l-4 border-l-rose-400 rounded-xl overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => toggleSection('challenge')}
-                className="w-full flex items-center justify-between p-4 hover:bg-rose-50/40 cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-rose-50 rounded-lg text-rose-600 ring-1 ring-rose-100">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Challenge & Canvas</span>
-                    <span className="text-[10px] text-slate-400">Describe the core client challenge and context details</span>
-                  </div>
-                </div>
-                {expandedSections.challenge ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {expandedSections.challenge && (
-                <div className="p-5 border-t border-slate-100 bg-white min-h-[420px] editorjs-wrapper">
-                  <RichTextEditor
-                    initialJson={contentJson}
-                    onChange={(html, json, text) => {
-                      setContentHtml(html);
-                      setContentJson(json);
-                      setContentText(text);
-                      hasChangesRef.current = true;
-                      setSaveStatus('unsaved');
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Section 3: Results Metrics */}
-            <div id="document-result-stats-section" className="bg-white border border-slate-200 border-l-4 border-l-emerald-400 rounded-xl overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => toggleSection('results')}
-                className="w-full flex items-center justify-between p-4 hover:bg-emerald-50/40 cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-emerald-50 rounded-lg text-emerald-600 ring-1 ring-emerald-100">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Results & Metrics</span>
-                    <span className="text-[10px] text-slate-400">Minimum 2 metrics demonstrating quantitative results</span>
-                  </div>
-                </div>
-                {expandedSections.results ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {expandedSections.results && (
-                <div className="p-5 border-t border-slate-100 bg-slate-50/10 space-y-4">
-                  <div className="space-y-3">
-                    {(docData.resultStats || []).map((stat: any, idx: number) => (
-                      <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col gap-3 relative shadow-3xs">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveStat(idx)}
-                          className="absolute top-3 right-3 p-1 hover:bg-red-50 text-slate-400 hover:text-red-650 rounded-md transition-colors cursor-pointer"
-                        >
-                          <Trash className="w-3.5 h-3.5" />
-                        </button>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="flex flex-col gap-1.5 col-span-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Metric Value</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. +145% or $1.2M"
-                              value={stat.value}
-                              onChange={e => handleUpdateStat(idx, 'value', e.target.value)}
-                              className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1.5 col-span-2">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Label / Dimension</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Monthly Active Users growth"
-                              value={stat.label}
-                              onChange={e => handleUpdateStat(idx, 'label', e.target.value)}
-                              className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                            />
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Context / Details</label>
-                          <input
-                            type="text"
-                            placeholder="Brief context detailing how this metric was tracked..."
-                            value={stat.description || ''}
-                            onChange={e => handleUpdateStat(idx, 'description', e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    {(docData.resultStats || []).length === 0 && (
-                      <p className="text-[11px] text-slate-400 text-center py-6">No results metrics added. Please add at least 2 metrics to publish.</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddStat}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg active-press transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Metric
-                  </button>
-
-                  <div className="border-t border-slate-200/60 pt-4 flex items-center justify-between mt-4">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">Show Metrics on Top of Page</span>
-                      <span className="text-[10px] text-slate-400">If enabled, vionsys.com will display metrics at the start of the study instead of the end.</span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={docData.showMetricsOnTop}
-                        onChange={e => updateField('showMetricsOnTop', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-600"></div>
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Section 4: Testimonial */}
-            <div className="bg-white border border-slate-200 border-l-4 border-l-amber-400 rounded-xl overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => toggleSection('testimonial')}
-                className="w-full flex items-center justify-between p-4 hover:bg-amber-50/40 cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-amber-50 rounded-lg text-amber-600 ring-1 ring-amber-100">
-                    <MessageSquare className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Client Testimonial</span>
-                    <span className="text-[10px] text-slate-400">Include quotes and client endorsements</span>
-                  </div>
-                </div>
-                {expandedSections.testimonial ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {expandedSections.testimonial && (
-                <div className="p-5 border-t border-slate-100 bg-slate-50/10 space-y-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Quote Description</label>
-                    <textarea
-                      rows={3}
-                      placeholder="e.g. Working with Vionsys allowed us to unlock scalable content pipelines and drive real growth..."
-                      value={docData.testimonialQuote || ''}
-                      onChange={e => updateField('testimonialQuote', e.target.value)}
-                      className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white resize-none leading-relaxed"
+                  )}
+      
+                  <div className="space-y-2">
+                    <input
+                      id="document-title-input"
+                      type="text"
+                      aria-label="Case study title"
+                      placeholder="Case study title (e.g. Scaling a HealthTech SaaS platform)"
+                      value={docData.title}
+                      onChange={e => {
+                        const val = e.target.value;
+                        updateField('title', val);
+                        if (isNew) {
+                          updateField(
+                            'slug',
+                            val
+                              .toLowerCase()
+                              .replace(/\s+/g, '-')
+                              .replace(/[^\w\-]+/g, '')
+                          );
+                        }
+                      }}
+                      className="w-full bg-transparent text-2xl text-slate-900 border-none outline-hidden placeholder-slate-300 focus:ring-0 leading-tight"
                     />
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Author Name</label>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                      <span className="text-slate-500">https://vionsys.com/case-studies/</span>
                       <input
+                        id="document-slug-input"
                         type="text"
-                        placeholder="e.g. Jane Doe"
-                        value={docData.testimonialName || ''}
-                        onChange={e => updateField('testimonialName', e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Designation</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. CTO"
-                        value={docData.testimonialDesignation || ''}
-                        onChange={e => updateField('testimonialDesignation', e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Company</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Acme Health"
-                        value={docData.testimonialCompany || ''}
-                        onChange={e => updateField('testimonialCompany', e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden bg-white"
+                        aria-label="URL slug"
+                        value={docData.slug}
+                        onChange={e => updateField('slug', e.target.value)}
+                        placeholder="case-study-slug"
+                        className="border-b border-slate-200 hover:border-slate-400 focus:border-brand-500 outline-hidden pb-0.5 px-0.5 bg-transparent text-slate-700"
                       />
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Section 5: CTA Block */}
-            <div className="bg-white border border-slate-200 border-l-4 border-l-rose-400 rounded-xl overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => toggleSection('cta')}
-                className="w-full flex items-center justify-between p-4 hover:bg-rose-50/40 cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-rose-50 rounded-lg text-rose-600 ring-1 ring-rose-100">
-                    <Link2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Call to Action (CTA)</span>
-                    <span className="text-[10px] text-slate-400">Configure page callouts and lead conversions</span>
-                  </div>
-                </div>
-                {expandedSections.cta ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {expandedSections.cta && (
-                <div className="p-5 border-t border-slate-100 bg-slate-50/10 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">CTA Heading</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Ready to transform your infrastructure?"
-                        value={docData.ctaHeading || ''}
-                        onChange={e => updateField('ctaHeading', e.target.value)}
-                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">CTA Description</label>
-                      <input
-                        type="text"
-                        placeholder="Brief summary pitching the value proposition..."
-                        value={docData.ctaBody || ''}
-                        onChange={e => updateField('ctaBody', e.target.value)}
-                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Button Label</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Let's connect"
-                        value={docData.ctaButtonLabel || ''}
-                        onChange={e => updateField('ctaButtonLabel', e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Button Target URL</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. /contact"
-                        value={docData.ctaButtonUrl || ''}
-                        onChange={e => updateField('ctaButtonUrl', e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden bg-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Section 6: FAQ Section */}
-            <div id="document-faqs-section" className="bg-white border border-slate-200 border-l-4 border-l-yellow-400 rounded-xl overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => toggleSection('faqs')}
-                className="w-full flex items-center justify-between p-4 hover:bg-yellow-50/40 cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-yellow-50 rounded-lg text-yellow-600 ring-1 ring-yellow-100">
-                    <HelpCircle className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Frequently Asked Questions (FAQ)</span>
-                    <span className="text-[10px] text-slate-400">Add questions and answers related to this case study</span>
-                  </div>
-                </div>
-                {expandedSections.faqs ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {expandedSections.faqs && (
-                <div className="p-5 border-t border-slate-100 bg-slate-50/10 space-y-4">
-                  <div className="space-y-3">
-                    {(docData.faqs || []).map((faq: any, idx: number) => (
-                      <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col gap-3 relative shadow-3xs">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFaq(idx)}
-                          className="absolute top-3 right-3 p-1 hover:bg-red-50 text-slate-400 hover:text-red-650 rounded-md transition-colors cursor-pointer"
-                        >
-                          <Trash className="w-3.5 h-3.5" />
-                        </button>
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Question</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. How long did the implementation take?"
-                            value={faq.question}
-                            onChange={e => handleUpdateFaq(idx, 'question', e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white"
-                          />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Answer</label>
-                          <textarea
-                            rows={3}
-                            placeholder="e.g. The initial deployment was completed in 6 weeks, with full rollout in 3 months."
-                            value={faq.answer}
-                            onChange={e => handleUpdateFaq(idx, 'answer', e.target.value)}
-                            className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-brand-500 bg-white resize-none leading-relaxed"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    {(docData.faqs || []).length === 0 && (
-                      <p className="text-[11px] text-slate-400 text-center py-6">No FAQs added yet.</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddFaq}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-yellow-700 bg-yellow-50 hover:bg-yellow-100 rounded-lg active-press transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add FAQ
-                  </button>
-                </div>
-              )}
-            </div>
-
-
-            {/* Bottom intelligence bar */}
-            <ContentIntelligenceBar
-              contentText={contentText}
-              contentHtml={contentHtml}
-              focusKeyword={seo.focusKeyword}
-            />
-          </div>
+                  </>
+                }
+                footer={
+                  <ContentIntelligenceBar
+                    contentText={contentText}
+                    contentHtml={contentHtml}
+                    focusKeyword={seo.focusKeyword}
+                  />
+                }
+              />
         ) : (
           /* Main Writing Canvas for Blog Posts */
           <div className="flex-1 flex flex-col p-8 overflow-y-auto gap-6 bg-slate-50/20 max-w-4xl mx-auto w-full pb-20">
@@ -1007,6 +692,7 @@ export function ContentEditorShell({
                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Content Canvas</span>
               </div>
               <RichTextEditor
+                key={`body-${bodyVersion}`}
                 initialJson={contentJson}
                 onChange={(html, json, text) => {
                   setContentHtml(html);
@@ -1051,10 +737,44 @@ export function ContentEditorShell({
           onImageSelected={id ? persistHeroImage : undefined}
           isSaving={isSaving}
           isPublishing={isPublishing}
+          aiPanel={
+            contentType === 'blog' ? (
+              <AiPanel
+                apiBase={id ? `/api/cms/blogs/${id}` : undefined}
+                noun="blog post"
+                quickPrompts={BLOG_PROMPTS}
+                insertLabel="Add to the end of the article"
+                onImported={result => setBlogImportReview(result as ImportResultPayload<BlogExtraction>)}
+                onInsertAnswer={insertAnswerIntoBody}
+              />
+            ) : undefined
+          }
         />
       </div>
+
+      {blogImportReview && (
+        <BlogImportReviewDialog
+          fileName={blogImportReview.source.fileName}
+          extraction={blogImportReview.extraction}
+          warnings={blogImportReview.warnings}
+          hasExistingBody={hasBodyContent}
+          onCancel={() => setBlogImportReview(null)}
+          onApply={(selected, bodyMode) => {
+            applyBlogImport(blogImportReview.extraction, selected, bodyMode);
+            setBlogImportReview(null);
+          }}
+        />
+      )}
     </div>
   );
 }
+
+const BLOG_PROMPTS = [
+  'Summarise the article in 2 sentences',
+  'Suggest 5 FAQs with answers',
+  'List the key takeaways',
+  'Suggest 3 alternative titles',
+  'Write a meta description under 160 characters',
+];
 
 export default ContentEditorShell;

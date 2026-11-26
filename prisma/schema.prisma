@@ -102,6 +102,10 @@ model CaseStudy {
   challengeJson          Json
   approachHtml           String
   approachJson           Json
+  // Page builder: block layout (rows → columns → blocks) and the template it started from.
+  // Null = legacy case study, rendered with the "classic" (live) template order.
+  layoutJson             Json?
+  templateId             String?
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   
@@ -321,4 +325,43 @@ model VersionHistory {
   contentHtml String
   authorId    String
   createdAt   DateTime   @default(now())
+}
+
+// --- AI document import + per-document RAG (case studies and blog posts) ------------
+// A document (PDF/DOCX) uploaded to a case study or blog post. Its text is split into
+// chunks with embeddings so "Ask AI" can answer from that item's own documents only.
+// Collection and field names are mapped to the original case-study-only names, so data
+// uploaded before blog support was added keeps working without a migration.
+model ContentSource {
+  id          String   @id @default(uuid()) @map("_id")
+  /// Case study or blog post id (UUIDs, so ids never collide across types).
+  ownerId     String   @map("caseStudyId")
+  /// "case-study" | "blog". Null on records created before blog support (= case study).
+  ownerType   String?
+  fileName    String
+  mimeType    String
+  size        Int
+  /// Unused: original files are not stored (the media bucket serves public URLs).
+  fileUrl     String?
+  text        String
+  chunkCount  Int      @default(0)
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  @@index([ownerId])
+  @@map("CaseStudySource")
+}
+
+model ContentSourceChunk {
+  id        String  @id @default(uuid()) @map("_id")
+  sourceId  String
+  ownerId   String  @map("caseStudyId")
+  position  Int
+  text      String
+  /// gemini-embedding-001 vector (768 dimensions).
+  embedding Float[]
+
+  @@index([ownerId])
+  @@index([sourceId])
+  @@map("SourceChunk")
 }

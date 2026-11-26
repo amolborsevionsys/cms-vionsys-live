@@ -10,6 +10,8 @@ import {
   recordCaseStudyVersionHistory,
 } from '../../lib/version-history';
 import { Prisma } from '@prisma/client';
+import { isTemplateId, normalizeLayout } from './layout/layout.utils';
+import { deleteAllSourcesOps } from '../ai/rag.service';
 
 export class CaseStudyService {
   static async listCaseStudies(params: {
@@ -89,8 +91,11 @@ export class CaseStudyService {
       approachJson: any;
       approachHtml: string;
       status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+      layout?: unknown;
+      templateId?: string;
     }
   ) {
+    const layout = normalizeLayout(input.layout);
     const finalSlug = input.slug ? slugify(input.slug) : slugify(input.title);
 
     // Verify slug uniqueness
@@ -148,6 +153,10 @@ export class CaseStudyService {
           ctaBody: input.ctaBody || null,
           ctaButtonLabel: input.ctaButtonLabel || null,
           ctaButtonUrl: input.ctaButtonUrl || null,
+
+          // Page builder
+          layoutJson: layout ? (layout as unknown as Prisma.InputJsonValue) : undefined,
+          templateId: isTemplateId(input.templateId) ? input.templateId : null,
         },
         include: {
           author: true,
@@ -253,6 +262,8 @@ export class CaseStudyService {
       aeoGeo?: any;
       schema?: any;
       status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+      layout?: unknown;
+      templateId?: string;
     }
   ) {
     const existing = await prisma.caseStudy.findUnique({
@@ -304,6 +315,13 @@ export class CaseStudyService {
     if (input.challengeJson !== undefined) updates.challengeJson = input.challengeJson;
     if (input.approachHtml !== undefined) updates.approachHtml = input.approachHtml;
     if (input.approachJson !== undefined) updates.approachJson = input.approachJson;
+
+    // Page builder: only a valid layout is stored; anything else is ignored.
+    if (input.layout !== undefined) {
+      const layout = normalizeLayout(input.layout);
+      if (layout) updates.layoutJson = layout;
+    }
+    if (isTemplateId(input.templateId)) updates.templateId = input.templateId;
 
     // Handle slug change & Redirects
     if (input.slug !== undefined && input.slug !== existing.slug) {
@@ -518,6 +536,8 @@ export class CaseStudyService {
     }
 
     await prisma.$transaction([
+      // Imported documents and their Ask AI search chunks belong to the case study.
+      ...deleteAllSourcesOps(id),
       prisma.caseStudy.delete({ where: { id } }),
       prisma.activityLog.create({
         data: {

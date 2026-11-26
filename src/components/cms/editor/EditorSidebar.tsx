@@ -9,7 +9,9 @@ import {
   Code,
   Globe,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  Sparkles,
+  type LucideIcon
 } from 'lucide-react';
 import { DocumentPanel } from './DocumentPanel';
 import { SeoPanel } from './SeoPanel';
@@ -20,8 +22,8 @@ import { PublishPanel } from './PublishPanel';
 interface EditorSidebarProps {
   isOpen: boolean;
   setIsOpen: (val: boolean) => void;
-  activeTab: 'doc' | 'seo' | 'aeo' | 'schema' | 'publish';
-  setActiveTab: (val: 'doc' | 'seo' | 'aeo' | 'schema' | 'publish') => void;
+  activeTab: SidebarTab;
+  setActiveTab: (val: SidebarTab) => void;
   onChecklistItemClick: (fieldKey: string) => void;
   data: any;
   onChange: (field: string, value: any) => void;
@@ -39,7 +41,11 @@ interface EditorSidebarProps {
   onImageSelected?: (url: string, alt: string) => void;
   isSaving: boolean;
   isPublishing: boolean;
+  /** Optional AI assistant panel; adds an "AI" tab when provided. */
+  aiPanel?: React.ReactNode;
 }
+
+export type SidebarTab = 'doc' | 'seo' | 'aeo' | 'schema' | 'publish' | 'ai';
 
 export function EditorSidebar({
   isOpen,
@@ -62,19 +68,23 @@ export function EditorSidebar({
   onPublish,
   onImageSelected,
   isSaving,
-  isPublishing
+  isPublishing,
+  aiPanel
 }: EditorSidebarProps) {
-  const tabs = [
+  const tabs: { id: SidebarTab; icon: LucideIcon; label: string; active: string; collapsed: string }[] = [
     { id: 'doc', icon: FileText, label: 'Doc', active: 'text-emerald-700 bg-emerald-50', collapsed: 'bg-emerald-50 text-emerald-600 border border-emerald-100' },
     { id: 'seo', icon: Search, label: 'SEO', active: 'text-amber-700 bg-amber-50', collapsed: 'bg-amber-50 text-amber-600 border border-amber-100' },
     { id: 'aeo', icon: Zap, label: 'AEO', active: 'text-yellow-700 bg-yellow-50', collapsed: 'bg-yellow-50 text-yellow-600 border border-yellow-100' },
     { id: 'schema', icon: Code, label: 'Schema', active: 'text-rose-700 bg-rose-50', collapsed: 'bg-rose-50 text-rose-600 border border-rose-100' },
-    { id: 'publish', icon: Globe, label: 'Publish', active: 'text-emerald-700 bg-emerald-50', collapsed: 'bg-emerald-50 text-emerald-600 border border-emerald-100' }
-  ] as const;
+    { id: 'publish', icon: Globe, label: 'Publish', active: 'text-emerald-700 bg-emerald-50', collapsed: 'bg-emerald-50 text-emerald-600 border border-emerald-100' },
+    ...(aiPanel
+      ? [{ id: 'ai' as const, icon: Sparkles, label: 'AI', active: 'text-brand-700 bg-brand-50', collapsed: 'bg-brand-50 text-brand-600 border border-brand-100' }]
+      : [])
+  ];
 
   return (
     <motion.aside
-      animate={{ width: isOpen ? 320 : 48 }}
+      animate={{ width: isOpen ? (aiPanel ? 360 : 320) : 48 }}
       transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}
       className="border-l border-slate-200 bg-white flex flex-col h-full relative overflow-hidden select-none shrink-0"
     >
@@ -87,7 +97,7 @@ export function EditorSidebar({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex gap-1"
+              className="flex min-w-0 gap-0.5"
             >
               {tabs.map(tab => {
                 const isActive = activeTab === tab.id;
@@ -96,7 +106,7 @@ export function EditorSidebar({
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-md cursor-pointer transition-colors relative ${
+                    className={`px-1.5 py-1 text-[11px] whitespace-nowrap font-bold rounded-md cursor-pointer transition-colors relative ${
                       isActive ? tab.active : 'text-slate-405 hover:text-slate-700'
                     }`}
                     title={tab.label}
@@ -156,6 +166,7 @@ export function EditorSidebar({
         {/* Scrollable Form Panel Area (Visible only when expanded) */}
         {isOpen && (
           <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
+            {activeTab !== 'ai' && (
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -216,6 +227,9 @@ export function EditorSidebar({
                 )}
               </motion.div>
             </AnimatePresence>
+            )}
+            {/* Kept mounted (hidden) so an upload or answer in progress survives tab switches. */}
+            {aiPanel && <div hidden={activeTab !== 'ai'}>{aiPanel}</div>}
           </div>
         )}
       </div>

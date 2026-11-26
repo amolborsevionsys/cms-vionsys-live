@@ -9,6 +9,7 @@ import {
   SchemaSettings,
   CaseStudyFaq
 } from '@prisma/client';
+import { resolveLayout } from './layout/layout.utils';
 
 type FullPrismaCaseStudy = PrismaCaseStudy & {
   author?: User;
@@ -98,6 +99,11 @@ export class CaseStudyMapper {
           }
         : null,
 
+      // Page builder. Bound blocks (hero, metrics, …) reference the fields above;
+      // free blocks carry their own content. See docs/CASE_STUDY_LAYOUTS.md.
+      templateId: cs.templateId ?? 'classic',
+      layout: resolveLayout(cs.layoutJson),
+
       seo: cs.seoMeta
         ? {
             title: cs.seoMeta.title,
@@ -182,6 +188,8 @@ export class CaseStudyMapper {
       processSteps: cs.processSteps || [],
       mediaGallery: cs.mediaGallery || [],
       faqs: cs.faqs || [],
+      templateId: cs.templateId ?? 'classic',
+      layout: resolveLayout(cs.layoutJson),
       seo: cs.seoMeta,
       aeoGeo: cs.aeoGeoMeta,
       schema: cs.schemaSettings,

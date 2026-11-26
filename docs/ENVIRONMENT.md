@@ -70,3 +70,18 @@ Required Vercel environment variables (Production and Preview): `DATABASE_URL`, 
    - Email: `admin@vionsys.com`
    - Password: `admin123`
    (The login route will auto-create this account on first login attempt if it doesn't exist).
+
+## AI document import and Ask AI (Google Gemini)
+
+Used by the case-study builder's **AI** tab: import a PDF or DOCX into the template, and ask questions answered only from that case study's uploaded documents.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | for AI features | Server-only key from [AI Studio](https://aistudio.google.com/apikey). New keys start with `AQ.` (Google's "Auth key" format since mid-2026); older keys start with `AIza`. Both work. Use **Copy key** on the key's details page: the full key is 53 characters, and the list view shows a shortened version. |
+| `GEMINI_MODEL` | | Generation model. Default `gemini-3.5-flash-lite` |
+| `GEMINI_EMBEDDING_MODEL` | | Embedding model for search. Default `gemini-embedding-001` (768 dimensions stored) |
+| `GEMINI_PROVIDER` | | Leave unset for AI Studio keys. Set `vertex` only to use a Google Cloud Vertex AI key (enable the "Agent Platform" API in that project; billed via Google Cloud) |
+
+> On the AI Studio **free tier**, Google may use submitted content to improve its products. The upload screen warns editors not to upload confidential client documents. Use a paid (billing-enabled) key, or Vertex AI, for confidential material.
+
+Limits: files up to 4 MB (Vercel's request-body limit); PDFs are sent to Gemini as files, DOCX as converted HTML. Original files are **not** stored. Only their extracted text is kept for search, because the media bucket serves public URLs.
