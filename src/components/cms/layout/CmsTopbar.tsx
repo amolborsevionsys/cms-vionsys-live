@@ -33,7 +33,8 @@ export function CmsTopbar() {
 
       <div className="flex items-center gap-4">
         {/* Quick create action buttons */}
-        {!pathname.includes('/new') && !pathname.includes('/edit') && (
+        {/* List pages have their own "New …" button; editors have their own actions. */}
+        {!pathname.includes('/new') && !pathname.includes('/edit') && pathname !== '/blogs' && pathname !== '/case-studies' && (
           <div className="flex gap-2">
             <Link
               href="/blogs/new"
