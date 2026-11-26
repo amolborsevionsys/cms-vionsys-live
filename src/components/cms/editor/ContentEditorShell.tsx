@@ -438,6 +438,20 @@ export function ContentEditorShell({
     void handleSave(true);
   };
 
+  // --- PREVIEW ON THE WEBSITE ---
+  // The website renders drafts with the same components as the live page, so this
+  // preview matches the public page exactly. It shows the saved version, so save first.
+  const openWebsitePreview = async () => {
+    if (!id) return;
+    // Open the tab during the click (pop-up blockers allow that), then point it at the
+    // preview once any pending changes are saved.
+    const previewTab = window.open('', '_blank');
+    if (hasChangesRef.current) await handleSave(true);
+    const url = `/api/cms/preview?id=${encodeURIComponent(id)}`;
+    if (previewTab) previewTab.location.href = url;
+    else window.open(url, '_blank');
+  };
+
   // --- PUBLISH OPERATION ---
   const handlePublish = async () => {
     setIsPublishing(true);
@@ -503,14 +517,15 @@ export function ContentEditorShell({
         <div className="flex items-center gap-2">
           {id && (
             <>
-              <Link
-                href={contentType === 'blog' ? `/blogs/${id}/preview` : `/case-studies/${id}/preview`}
-                target="_blank"
+              <button
+                type="button"
+                onClick={openWebsitePreview}
+                title="Saves your changes, then opens the page exactly as it will look on vionsys.com"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active-press rounded-lg transition-all shadow-xs cursor-pointer"
               >
                 <Eye className="w-3.5 h-3.5" />
-                Local Preview
-              </Link>
+                Preview
+              </button>
               {isPublishedContent(docData.status) && docData.slug && (
                 <a
                   href={

@@ -54,7 +54,7 @@ export function BlogListTable({ posts, initialStatus }: BlogListTableProps) {
       editHref: `/blogs/${post.id}/edit`,
       view: isLive
         ? { href: getBlogLiveUrl(post.slug), label: 'View on vionsys.com', external: true }
-        : { href: `/blogs/${post.id}/preview`, label: 'Preview draft', external: false },
+        : { href: `/api/cms/preview?id=${post.id}`, label: 'Preview on vionsys.com', external: true },
       category,
       author,
       updatedAt: post.updatedAt,

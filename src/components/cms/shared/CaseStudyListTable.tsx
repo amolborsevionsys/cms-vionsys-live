@@ -75,7 +75,7 @@ export function CaseStudyListTable({ caseStudies, initialStatus }: CaseStudyList
       editHref: `/case-studies/${cs.id}/edit`,
       view: isLive
         ? { href: getCaseStudyLiveUrl(cs.slug), label: 'View on vionsys.com', external: true }
-        : { href: `/case-studies/${cs.id}/preview`, label: 'Preview draft', external: false },
+        : { href: `/api/cms/preview?id=${cs.id}`, label: 'Preview on vionsys.com', external: true },
       clientName: cs.clientName,
       industry: cs.industry,
       metricCount: cs.metricCount,
