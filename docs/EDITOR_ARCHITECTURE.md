@@ -38,7 +38,7 @@ Writers can inject complex modular layouts (like FAQs, Stats, CTAs, and Testimon
 1. **Insertion**: The dropdown inserts these as Editor.js **Raw HTML** blocks containing pre-styled snippets with distinct classes (e.g. `<div class="stats-block">...</div>`).
 2. **Output**: The database stores three forms of editor output:
    - `contentJson`: The complete Editor.js `OutputData` object, used to restore the editor.
-   - `contentHtml`: HTML generated in the browser for frontend presentation. It is **not yet sanitised on the server** ([rule.md §12 V3](../rule.md#12-known-violations-in-this-repo)).
+   - `contentHtml`: HTML generated in the browser, then sanitised on the server with an allow-list (`src/lib/sanitize-html.ts`) before it is stored for frontend presentation.
    - `contentText`: Plain text, used for search and the content metrics.
 
 ---

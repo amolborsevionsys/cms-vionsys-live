@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { SitemapGenerator } from '../../../../../features/seo/sitemap-generator';
-import { ApiResponse } from '../../../../../lib/api-response';
-import { validatePublicApiKey } from '../../../../../features/auth/validate-public-api-key';
+import { SitemapGenerator } from '@/features/seo/sitemap-generator';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
+import { validatePublicApiKey } from '@/features/auth/validate-public-api-key';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,9 +13,8 @@ export async function GET(request: NextRequest) {
 
     const sitemapData = await SitemapGenerator.generateSitemapData();
     return ApiResponse.success(sitemapData);
-  } catch (err: any) {
-    console.error('Public sitemap API error:', err);
-    return ApiResponse.serverError('An error occurred generating sitemap content.', err.message);
+  } catch (err: unknown) {
+    return handleApiError(err, 'Public sitemap API error');
   }
 }
 export const dynamic = 'force-dynamic';

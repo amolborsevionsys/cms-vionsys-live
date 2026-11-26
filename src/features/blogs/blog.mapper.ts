@@ -1,12 +1,13 @@
-import { BlogPost as PrismaBlogPost, User, Category, Tag, SeoMeta, AeoGeoMeta, SchemaSettings } from '@prisma/client';
+import { BlogPost as PrismaBlogPost, User, Category, Tag, SeoMeta, AeoGeoMeta, SchemaSettings, VersionHistory } from '@prisma/client';
 
 type FullPrismaBlogPost = PrismaBlogPost & {
-  author?: User;
+  author?: Pick<User, 'id' | 'name' | 'role'> | null;
   category?: Category | null;
   tags?: Tag[];
   seoMeta?: SeoMeta | null;
   aeoGeoMeta?: AeoGeoMeta | null;
   schemaSettings?: SchemaSettings | null;
+  versions?: VersionHistory[];
 };
 
 export class BlogMapper {
@@ -102,7 +103,7 @@ export class BlogMapper {
       seo: blog.seoMeta,
       aeoGeo: blog.aeoGeoMeta,
       schema: blog.schemaSettings,
-      versions: (blog as any).versions || [],
+      versions: blog.versions || [],
     };
   }
 }

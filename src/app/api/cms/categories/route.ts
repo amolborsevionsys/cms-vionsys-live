@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { prisma } from '../../../../lib/prisma';
-import { authorizeUser } from '../../../../features/auth/rbac';
-import { ApiResponse } from '../../../../lib/api-response';
-import { slugify } from '../../../../lib/slugify';
+import { prisma } from '@/lib/prisma';
+import { authorizeUser } from '@/features/auth/rbac';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
+import { slugify } from '@/lib/slugify';
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,9 +48,8 @@ export async function POST(request: NextRequest) {
     });
 
     return ApiResponse.success(category);
-  } catch (err: any) {
-    console.error('API create category error:', err);
-    return ApiResponse.error(err.code || 'CREATE_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API create category error');
   }
 }
 

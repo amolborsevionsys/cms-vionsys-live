@@ -70,12 +70,16 @@ graph LR
 
 1. `/login` posts the email and password to `POST /api/cms/auth/login`.
 2. The password is checked with bcrypt. On success a 24-hour JWT is set in the `vionsys_cms_token` cookie (`httpOnly`, `sameSite=lax`, `secure` in production).
-3. `src/middleware.ts` does an **optimistic** check: admin paths without a cookie are redirected to `/login`.
+3. `src/proxy.ts` (Next.js 16's renamed Middleware) does an **optimistic** check: admin paths without a cookie are redirected to `/login`.
 4. The real check happens on the server:
    - Pages call `requireAuthPage()` ([require-auth.ts](src/features/auth/require-auth.ts)).
    - Route handlers call `requireAuth()` or `authorizeUser(permission)` ([rbac.ts](src/features/auth/rbac.ts)).
 
-**First-run bootstrap:** while the `User` collection is empty, logging in as `admin@vionsys.com` / `admin123` creates a `SUPER_ADMIN` account. Change that password immediately in any shared environment. There is no user-management UI yet, so other users must be added directly in the database.
+**First-run bootstrap:** while the `User` collection is empty, the first login can create a `SUPER_ADMIN`:
+- **Local development:** `admin@vionsys.com` / `admin123`.
+- **Production:** only with the credentials in `CMS_BOOTSTRAP_ADMIN_EMAIL` / `CMS_BOOTSTRAP_ADMIN_PASSWORD`. Without them, there is no default login.
+
+Once any user exists, this path is never used. There is no user-management UI yet, so other users must be added directly in the database.
 
 ### 2. Content lifecycle (blog posts)
 
@@ -87,14 +91,18 @@ Create ─► Edit (autosave every 30 s + on window blur) ─► Publish ─► 
 
 - **Editor:** [ContentEditorShell.tsx](src/components/cms/editor/ContentEditorShell.tsx) runs the page. It holds the form state, runs autosave, and has side panels for Document, SEO, AEO/GEO, Schema, and Publish.
 - **Body content:** [RichTextEditor.tsx](src/components/cms/editor/RichTextEditor.tsx) loads Editor.js on the client only. On every change it turns the blocks into HTML and plain text with [editorjs-parser.ts](src/lib/editorjs-parser.ts). Three copies are stored: `contentJson` (to reload the editor), `contentHtml` (for the website), and `contentText` (for search and metrics).
-- **Saving:** `POST /api/cms/blogs` creates a post and `PUT /api/cms/blogs/:id` updates one. Both go through [BlogService](src/features/blogs/blog.service.ts), which:
+- **Sanitising:** the server cleans every stored HTML field with an allow-list ([sanitize-html.ts](src/lib/sanitize-html.ts)) before saving. Editor output, the custom blocks, inline styles, and YouTube, Vimeo, Google Maps, and Loom embeds are kept. Scripts, event handlers, `javascript:` links, and unknown iframes are removed.
+- **Saving:** `POST /api/cms/blogs` creates a post and `PUT /api/cms/blogs/:id` updates one. The body is validated with Zod ([blog.validation.ts](src/features/blogs/blog.validation.ts)). The check covers types only, and unknown keys are dropped. Then [BlogService](src/features/blogs/blog.service.ts):
   - checks that the slug is unique,
   - creates the SEO, AEO/GEO, and schema meta records the first time a post is saved ([content-meta.ts](src/lib/content-meta.ts)),
   - writes an `ActivityLog` entry,
   - writes a `VersionHistory` snapshot when the content changed, keeping the last 20 ([version-history.ts](src/lib/version-history.ts)),
   - adds a `301` redirect from the old URL when a published post's slug changes,
   - calls [RevalidationService](src/features/publishing/revalidation.service.ts) when the post is or was published.
-- **Status:** `DRAFT`, `SCHEDULED`, `PUBLISHED`, `ARCHIVED`. Moving to `PUBLISHED` sets `publishedAt`.
+- **Status:** `DRAFT`, `SCHEDULED`, `PUBLISHED`, `ARCHIVED`.
+  - Changing to or from `PUBLISHED`/`SCHEDULED` needs `content:publish`. Changing to or from `ARCHIVED` needs `content:archive`.
+  - Re-saving a post in its current status only needs `content:edit`.
+- **Publishing:** the edits are saved first. Then the publish checklist (below) must pass before the status becomes `PUBLISHED` and `publishedAt` is set. If it fails, the API returns `422 PUBLISH_BLOCKED`, and the edits stay saved as a draft.
 - **Delete:** a post that was ever live gets a `301` redirect to `/blog`, then the frontend is revalidated.
 
 ### 3. Case studies
@@ -121,8 +129,8 @@ The request times out after 10 seconds. A failure is logged but does **not** fai
 ### 5. Draft preview
 
 1. The editor opens `GET /api/cms/preview?id=<id>`.
-2. The CMS signs the ID with HMAC-SHA256 (key: `JWT_SECRET`) and redirects to `{VIONSYS_FRONTEND_BASE_URL}/blog/preview?id=…&token=…` (or `/case-studies/preview`).
-3. The website calls `GET /api/cms/preview/<token>?id=<id>&type=blog|case-study`, and the CMS returns the draft if the signature matches.
+2. The CMS creates a token of the form `<expiresAt>.<HMAC-SHA256(type:id:expiresAt)>`, signed with `PREVIEW_SECRET` (falls back to `JWT_SECRET`). The token is valid for 7 days. The CMS then redirects to `{VIONSYS_FRONTEND_BASE_URL}/blog/preview?id=…&token=…` (or `/case-studies/preview`).
+3. The website calls `GET /api/cms/preview/<token>?id=<id>&type=blog|case-study`. The CMS returns the draft if the token is valid, unexpired, and matches that ID and type. CORS headers are sent only to allow-listed origins.
 
 When the CMS runs on `localhost` and the frontend URL is `https://vionsys.com`, preview redirects to a local frontend instead (port 3001 if the CMS is on 3000).
 
@@ -142,7 +150,7 @@ There is also an in-CMS preview at `/blogs/:id/preview` and `/case-studies/:id/p
 - **SEO score:** [score-calculator.ts](src/features/seo/score-calculator.ts).
 - **JSON-LD:** [schema-generator.ts](src/features/seo/schema-generator.ts) builds `BlogPosting` and case-study schema, merged with `SchemaSettings.customSchemaJson`.
 - **Public SEO feeds:** sitemap, robots, redirects, and an `llms.txt` catalogue, served from `/api/v1/public/*`. The frontend turns these into real `sitemap.xml` and `robots.txt` files.
-- **Publish checklist:** [publish.service.ts](src/features/publishing/publish.service.ts) defines blockers and warnings (meta title and description, alt text, schema type, at least 2 result stats for case studies). It is **not yet enforced** by the save API. See [rule.md §12](rule.md#12-known-violations-in-this-repo).
+- **Publish checklist:** [publish.service.ts](src/features/publishing/publish.service.ts) enforces the same blockers on the server as the editor's Publish panel: title, slug, meta title, meta description, and alt text on the featured or hero image. Case studies also need a client name and at least 2 result stats.
 
 ---
 
@@ -153,7 +161,7 @@ prisma/schema.prisma          MongoDB data model (single source of truth)
 scripts/migrate-seo-fks.mjs   One-off migration for SEO meta foreign keys
 docs/                         Architecture, API contract, env, frontend integration
 src/
-├── middleware.ts             Optimistic auth redirect + CORS for /api/v1/public/*
+├── proxy.ts                  Optimistic auth redirect + CORS for /api/v1/public/* (Next 16 "Proxy")
 ├── app/
 │   ├── (auth)/login/         Login page
 │   ├── (cms)/                Admin pages (route group, no URL segment)
@@ -180,7 +188,7 @@ src/
 └── styles/tokens.css         Design tokens
 ```
 
-**Layering:** `app/` (pages and route handlers) → `features/*` services → `lib/prisma`. Route handlers stay thin: authenticate, parse input, call a service, return `ApiResponse`. Mappers (`*.mapper.ts`) decide which fields leave the server (`toAdminJson` and `toPublicJson`).
+**Layering:** `app/` (pages and route handlers) → `features/*` services → `lib/prisma`. Route handlers stay thin: authorise, parse input with Zod, call a service, return `ApiResponse`. Errors go through `handleApiError` ([api-error.ts](src/lib/api-error.ts)). Mappers (`*.mapper.ts`) decide which fields leave the server (`toAdminJson` and `toPublicJson`).
 
 ---
 
@@ -247,25 +255,41 @@ All responses use one envelope ([api-response.ts](src/lib/api-response.ts)):
 | GET / POST | `/case-studies` | signed in / `content:create` |
 | GET / PUT / DELETE | `/case-studies/:id` | signed in / `content:edit` / `content:delete` |
 | POST / DELETE | `/categories`, `/categories/:id` | `taxonomy:manage` |
-| GET / POST | `/media` (POST `{action:"CREATE_FOLDER"}`) | signed in |
+| GET / POST | `/media` (POST `{action:"CREATE_FOLDER"}`) | signed in / `media:upload` |
 | PUT / DELETE | `/media/:id` | `media:upload` / `media:delete` |
 | POST | `/upload` (multipart) | `media:upload` |
 | GET | `/preview?id=` | none (redirects to the frontend) |
 | GET | `/preview/:token?id=&type=` | valid HMAC token |
 | GET | `/env-check` | signed in (`?reveal=1` works only outside production) |
 
+Status codes:
+- `201` create.
+- `401` no session.
+- `403` the role lacks the permission (including publishing without `content:publish`).
+- `409` duplicate slug.
+- `422` invalid body (`VALIDATION_ERROR`) or a failed publish checklist (`PUBLISH_BLOCKED`, with the issues in `error.details`).
+- `500` unexpected. The internal message is logged, never returned.
+
 ### Public API: `/api/v1/public/*` (header `x-vionsys-cms-key` or `x-api-key`)
 
 | Path | Returns |
 |---|---|
-| `/blogs`, `/blogs/:slug` | Published posts with SEO, AEO, and schema |
-| `/case-studies`, `/case-studies/:slug` | Published case studies |
+| `/blogs`, `/blogs/:slug` | Published posts with SEO, AEO, and schema. Optional `?limit=&page=` (max 100) |
+| `/case-studies`, `/case-studies/:slug` | Published case studies. Optional `?limit=&page=` (max 100) |
 | `/sitemap` | Sitemap entries (JSON) |
 | `/robots` | robots.txt content |
 | `/redirects` | All redirect rules |
 | `/llms` | `llms.txt` catalogue |
 
-CORS for these routes is handled in `src/middleware.ts`. Allowed origins are `*.vionsys.com`, the CMS's Vercel domain, and `localhost`.
+List endpoints return everything when `limit` is omitted. When it is sent, `meta` contains `{ total, page, limit }`.
+
+CORS for these routes is handled in `src/proxy.ts`, using the allow-list in [cors.ts](src/lib/cors.ts):
+- `vionsys.com` and https `*.vionsys.com`,
+- the CMS's Vercel domain,
+- the configured frontend URL,
+- `localhost`.
+
+**API keys:** create one with `npm run api-key:create -- "<name>"`. Only its SHA-256 hash is stored, and the key is printed once. The legacy shared dev key still works until `PUBLIC_API_DISABLE_DEV_KEY=true` is set, because the live website currently uses it.
 
 Full contract: [docs/API_CONTRACT.md](docs/API_CONTRACT.md). Website-side setup: [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md).
 
@@ -302,7 +326,8 @@ To test previews and revalidation end to end, run the vionsys.com frontend on po
 | Variable | Required | Purpose |
 |---|:-:|---|
 | `DATABASE_URL` | ✅ | MongoDB connection string (`mongodb+srv://…/vionsys_cms`) |
-| `JWT_SECRET` | ✅ | Signs session JWTs **and** preview tokens. Use a random string of at least 32 bytes |
+| `JWT_SECRET` | ✅ | Signs session JWTs. Use a random string of at least 32 bytes |
+| `PREVIEW_SECRET` | | Signs draft-preview tokens. Falls back to `JWT_SECRET` |
 | `CMS_BASE_URL` | | Public URL of this CMS |
 | `VIONSYS_FRONTEND_BASE_URL` | | Website base URL, used for preview redirects |
 | `FRONTEND_REVALIDATE_URL` | ✅ prod | Website revalidation endpoint |
@@ -311,8 +336,13 @@ To test previews and revalidation end to end, run the vionsys.com frontend on po
 | `BUCKET` | uploads | S3 bucket name |
 | `ACCESS_KEY_ID` | uploads | AWS access key |
 | `SECRET_ACCESS_KEY` | uploads | AWS secret key |
+| `PUBLIC_API_DISABLE_DEV_KEY` | | `true` turns off the legacy shared dev API key. Set it after the website uses a real key |
+| `PUBLIC_API_DEV_KEY` | | Overrides the value of the legacy dev key |
+| `ENV_STRICT` | | `true` makes a missing `JWT_SECRET` or `FRONTEND_REVALIDATE_SECRET` fail startup in production, instead of falling back to the defaults |
+| `CMS_BOOTSTRAP_ADMIN_EMAIL` / `CMS_BOOTSTRAP_ADMIN_PASSWORD` | | Credentials for creating the first admin on an empty production database |
+| `PRISMA_DB_PUSH` | | `auto` (default), `always`, or `never`. Controls `prisma db push` during `npm run build` |
 
-> `src/lib/env.ts` and `src/config/site.ts` fall back to hard-coded defaults for secrets when a variable is missing. Always set real values in Vercel. To see what the running app actually resolved, sign in and open `/api/cms/env-check`.
+> All server configuration is read in [src/lib/env.ts](src/lib/env.ts). For backwards compatibility, missing secrets still fall back to the old built-in defaults, and production logs an error each time. Set real values in Vercel, check them at `/api/cms/env-check` (signed in), then set `ENV_STRICT=true`.
 
 More detail: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
 
@@ -323,11 +353,12 @@ More detail: [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server on port 3000 (Turbopack) |
-| `npm run build` | `prisma generate` → `prisma db push` → `next build` |
+| `npm run build` | `prisma generate` → `prisma db push` (skipped on Vercel Preview, see [scripts/db-push.mjs](scripts/db-push.mjs)) → `next build` |
 | `npm start` | Serve the production build |
 | `npm run lint` | ESLint (flat config, `eslint-config-next`). `next build` no longer lints in Next 16 |
 | `npm run db:push` | Sync the Prisma schema to MongoDB (indexes, unique constraints) |
 | `npm run db:migrate-seo` | One-off backfill of SEO meta foreign keys ([scripts/migrate-seo-fks.mjs](scripts/migrate-seo-fks.mjs)) |
+| `npm run api-key:create -- "<name>" [--expires-days=N]` | Create a hashed public API key ([scripts/create-api-key.mjs](scripts/create-api-key.mjs)). The key is printed once |
 | `npx tsc --noEmit` | Type-check (run before every PR) |
 
 There is no automated test suite yet.
@@ -344,7 +375,7 @@ There is no automated test suite yet.
 | Build command | `npm run build` |
 | Environment variables | Everything in the table above, for both Production and Preview |
 
-**Be careful:** the build command runs `prisma db push` against `DATABASE_URL`. Every deploy, Preview deploys included, applies the schema to whichever database that variable points at. Point Preview at a separate database.
+**Schema sync:** production builds run `prisma db push` against `DATABASE_URL`, as before. Vercel Preview and Development builds skip it, so a Preview cannot change the schema of the database it points at. Override this with `PRISMA_DB_PUSH=always|never`.
 
 If the build fails with *"Couldn't find any `pages` or `app` directory"*, the Root Directory setting is wrong.
 
@@ -354,12 +385,13 @@ If the build fails with *"Couldn't find any `pages` or `app` directory"*, the Ro
 
 These are tracked in detail, with fixes, in [rule.md §12](rule.md#12-known-violations-in-this-repo):
 
-- A hard-coded development API key is accepted by the public API in every environment.
-- Request bodies are not validated with the Zod schemas on the server, and HTML is not sanitised on the server.
+- The legacy shared dev API key is still accepted, because the live website uses it. Move the website to a real key, then disable the dev key.
+- Missing secrets fall back to built-in defaults until `ENV_STRICT=true` is set.
+- No rate limiting on login or the public API.
 - `SCHEDULED` status exists, but no job publishes scheduled posts.
 - Case studies cannot be unpublished (`publishedAt` is never cleared).
 - Settings and SEO-tool pages are read-only. There is no UI to create users, API keys, or redirects.
-- `src/middleware.ts` uses the convention that Next.js 16 deprecated. It should be renamed to `proxy.ts`.
+- No `error.tsx` / `not-found.tsx`, security headers, tests, or CI yet.
 - Unused dependencies: the `@tiptap/*` packages, `lowlight`, `react-hook-form`, and `@hookform/resolvers`.
 
 ---

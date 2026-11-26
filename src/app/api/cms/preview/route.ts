@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PreviewTokenService } from '@/features/publishing/preview-token.service';
 import { siteConfig } from '@/config/site';
+import { logger } from '@/lib/logger';
 
 function isRscRequest(request: NextRequest) {
   return (
@@ -41,23 +42,21 @@ export async function GET(request: NextRequest) {
     // Determine content type
     const blog = await prisma.blogPost.findUnique({ where: { id } });
     if (blog) {
-      const token = PreviewTokenService.generateToken(id);
-      const redirectUrl = `${frontendUrl}/blog/preview?id=${id}&token=${token}`;
-      console.log(`[Preview API] Redirecting blog to: ${redirectUrl} (configured frontendUrl: ${siteConfig.frontendUrl}, detected isLocalhost: ${isLocalhost})`);
+      const token = PreviewTokenService.generateToken(id, 'blog');
+      const redirectUrl = `${frontendUrl}/blog/preview?id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`;
       return NextResponse.redirect(redirectUrl);
     }
 
     const cs = await prisma.caseStudy.findUnique({ where: { id } });
     if (cs) {
-      const token = PreviewTokenService.generateToken(id);
-      const redirectUrl = `${frontendUrl}/case-studies/preview?id=${id}&token=${token}`;
-      console.log(`[Preview API] Redirecting case study to: ${redirectUrl} (configured frontendUrl: ${siteConfig.frontendUrl}, detected isLocalhost: ${isLocalhost})`);
+      const token = PreviewTokenService.generateToken(id, 'case-study');
+      const redirectUrl = `${frontendUrl}/case-studies/preview?id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`;
       return NextResponse.redirect(redirectUrl);
     }
 
     return NextResponse.json({ error: 'Content not found' }, { status: 404 });
-  } catch (err: any) {
-    console.error('Preview redirect error:', err);
+  } catch (err: unknown) {
+    logger.error('Preview redirect error', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

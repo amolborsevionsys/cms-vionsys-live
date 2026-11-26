@@ -7,11 +7,12 @@ import {
   SeoMeta,
   AeoGeoMeta,
   SchemaSettings,
-  CaseStudyFaq
+  CaseStudyFaq,
+  VersionHistory
 } from '@prisma/client';
 
 type FullPrismaCaseStudy = PrismaCaseStudy & {
-  author?: User;
+  author?: Pick<User, 'id' | 'name' | 'role'> | null;
   resultStats?: ResultStat[];
   processSteps?: ProcessStep[];
   mediaGallery?: MediaGalleryItem[];
@@ -19,6 +20,7 @@ type FullPrismaCaseStudy = PrismaCaseStudy & {
   aeoGeoMeta?: AeoGeoMeta | null;
   schemaSettings?: SchemaSettings | null;
   faqs?: CaseStudyFaq[];
+  versions?: VersionHistory[];
 };
 
 export class CaseStudyMapper {
@@ -185,7 +187,7 @@ export class CaseStudyMapper {
       seo: cs.seoMeta,
       aeoGeo: cs.aeoGeoMeta,
       schema: cs.schemaSettings,
-      versions: (cs as any).versions || []
+      versions: cs.versions || []
     };
   }
 }

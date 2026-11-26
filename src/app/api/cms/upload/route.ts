@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { StorageAdapter } from '../../../../features/media/storage-adapter';
-import { MediaService } from '../../../../features/media/media.service';
-import { authorizeUser } from '../../../../features/auth/rbac';
-import { ApiResponse } from '../../../../lib/api-response';
+import { StorageAdapter } from '@/features/media/storage-adapter';
+import { MediaService } from '@/features/media/media.service';
+import { authorizeUser } from '@/features/auth/rbac';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,9 +50,8 @@ export async function POST(request: NextRequest) {
       message: `${savedAssets.length} file(s) uploaded successfully.`,
       assets: savedAssets
     });
-  } catch (err: any) {
-    console.error('API upload error:', err);
-    return ApiResponse.error(err.code || 'UPLOAD_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API upload error');
   }
 }
 

@@ -24,6 +24,14 @@ REGION="ap-south-1"
 BUCKET="vionsys-wms"
 ACCESS_KEY_ID=""
 SECRET_ACCESS_KEY=""
+
+# Optional hardening switches (all default to the previous behaviour)
+# PREVIEW_SECRET=""                  # signs draft-preview tokens; falls back to JWT_SECRET
+# PUBLIC_API_DISABLE_DEV_KEY="true"  # turn off the legacy shared dev API key
+# ENV_STRICT="true"                  # production: fail startup if JWT/revalidate secrets are missing
+# CMS_BOOTSTRAP_ADMIN_EMAIL=""       # first admin on an EMPTY production database
+# CMS_BOOTSTRAP_ADMIN_PASSWORD=""
+# PRISMA_DB_PUSH="auto"              # auto | always | never (build-time prisma db push)
 ```
 
 ## Environment diagnostics
@@ -45,7 +53,7 @@ Use this repository root as the Vercel project root (the folder that contains `p
 | Git repository | `pawanvionsys/cms-vionsys-live` (or this repo mirrored to your org) |
 | Production branch | `main` |
 | **Root Directory** | **Leave empty** — do not set `src`, `docs`, or `cms` |
-| Build command | `npm run build` (runs Prisma generate, `db push`, then `next build`) |
+| Build command | `npm run build`. Runs Prisma generate, then `db push` (production only, skipped on Preview), then `next build` |
 
 If the build fails with **“Couldn't find any `pages` or `app` directory”**, the Root Directory is almost always wrong: Vercel is building a subfolder that is not the Next.js app. Clear **Root Directory** in **Project Settings → General** and redeploy.
 

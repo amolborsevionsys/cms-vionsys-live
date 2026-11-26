@@ -36,7 +36,7 @@ graph TD
 1. **Backend & Frontend framework**: Next.js App Router (Next.js 16.2.10, React 19.2.4).
 2. **Database Persistence**: MongoDB mapped through Prisma ORM (v5). Transactions require a replica set.
 3. **Rich Editor Canvas**: Editor.js with a custom block inserter (FAQ, Stats, CTA, Testimonial, Key Takeaways), inserted as Raw HTML blocks.
-4. **Authentication**: Cookie-based JWT session. `src/middleware.ts` does an optimistic redirect only; pages and route handlers verify the session and permissions on the server.
+4. **Authentication**: Cookie-based JWT session. `src/proxy.ts` does an optimistic redirect only; pages and route handlers verify the session and permissions on the server.
 5. **Media Storage**: AWS S3.
 6. **Aesthetics & Styling**: Vanilla CSS alongside Tailwind CSS (v4) with high-caliber enterprise Blue accents.
 
@@ -48,5 +48,5 @@ The central RBAC configuration is mapped inside [permissions.ts](../src/config/p
 
 *   **SUPER_ADMIN**: Full system settings, database management, user settings, API keys, delete/publish commands.
 *   **CONTENT_MANAGER**: Edit content, publish/unpublish, media management, folder organisation, redirects settings, schema settings.
-*   **EDITOR**: Write and edit drafts, upload media. (There is no approval workflow yet. See [rule.md §12 V5](../rule.md#12-known-violations-in-this-repo): the API does not currently stop an EDITOR from setting `status` to `PUBLISHED`.)
+*   **EDITOR**: Write and edit drafts, upload media. Publishing, unpublishing, and archiving are rejected with `403` (see `src/features/auth/content-permissions.ts`). There is no "request approval" workflow yet.
 *   **VIEWER**: Read-only access for proofreading.

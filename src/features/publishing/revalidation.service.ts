@@ -1,5 +1,5 @@
-import { siteConfig } from '../../config/site';
-import { logger } from '../../lib/logger';
+import { env } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 export class RevalidationService {
   /**
@@ -14,8 +14,8 @@ export class RevalidationService {
       slug?: string;
     }
   ): Promise<boolean> {
-    const url = siteConfig.revalidateUrl;
-    const secret = siteConfig.revalidateSecret;
+    const url = env.FRONTEND_REVALIDATE_URL;
+    const secret = env.FRONTEND_REVALIDATE_SECRET;
 
     if (!url) {
       logger.warn('Revalidation URL is not configured. Skipping cache purging.');
@@ -52,7 +52,7 @@ export class RevalidationService {
       const result = await response.json();
       logger.info('Revalidation completed successfully:', result);
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Error triggering revalidation:', err);
       return false;
     }

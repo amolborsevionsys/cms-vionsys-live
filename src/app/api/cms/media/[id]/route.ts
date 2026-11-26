@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { MediaService } from '../../../../../features/media/media.service';
-import { authorizeUser } from '../../../../../features/auth/rbac';
-import { ApiResponse } from '../../../../../lib/api-response';
+import { MediaService } from '@/features/media/media.service';
+import { authorizeUser } from '@/features/auth/rbac';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
 
 export async function PUT(
   request: NextRequest,
@@ -14,9 +15,8 @@ export async function PUT(
 
     const result = await MediaService.updateAsset(id, body);
     return ApiResponse.success(result);
-  } catch (err: any) {
-    console.error('API media update error:', err);
-    return ApiResponse.error(err.code || 'UPDATE_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API media update error');
   }
 }
 
@@ -30,9 +30,8 @@ export async function DELETE(
 
     await MediaService.deleteAsset(id);
     return ApiResponse.success({ message: 'Media asset deleted successfully.' });
-  } catch (err: any) {
-    console.error('API media delete error:', err);
-    return ApiResponse.error(err.code || 'DELETE_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API media delete error');
   }
 }
 export const dynamic = 'force-dynamic';

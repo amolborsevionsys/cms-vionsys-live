@@ -2,6 +2,7 @@ import React from 'react';
 import { requireAuthPage } from '@/features/auth/require-auth';
 import { CmsShell } from '@/components/cms/layout/CmsShell';
 import { siteConfig } from '@/config/site';
+import { env } from '@/lib/env';
 import { FormField } from '@/components/cms/shared/FormField';
 import { Settings, Save } from 'lucide-react';
 
@@ -54,7 +55,7 @@ export default async function GeneralSettingsPage() {
             <FormField label="Revalidation Webhook Receiver URL">
               <input
                 type="url"
-                defaultValue={siteConfig.revalidateUrl}
+                defaultValue={env.FRONTEND_REVALIDATE_URL}
                 className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 bg-slate-50/50"
               />
             </FormField>

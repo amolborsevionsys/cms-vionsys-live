@@ -6,7 +6,12 @@ This document outlines the API specifications for consuming published content fr
 
 All endpoints require the API authentication key supplied in the request headers:
 - Header Key: `x-vionsys-cms-key` (`x-api-key` is also accepted)
-- Dev Value: `vionsys-cms-public-key-dev-2026`. **Warning:** this key is currently accepted in production too ([rule.md §12 V1](../rule.md#12-known-violations-in-this-repo)).
+- Keys are created with `npm run api-key:create -- "<name>"`. Only the SHA-256 hash is stored, and inactive or expired keys are rejected.
+- **Legacy shared dev key:** still accepted, because the live website uses it today. Once the website uses a real key, set `PUBLIC_API_DISABLE_DEV_KEY=true` on the CMS to turn it off ([rule.md §12 V1](../rule.md#12-known-violations-in-this-repo)).
+
+## Pagination
+
+`/blogs` and `/case-studies` return **every** published item by default. Send `?limit=N&page=P` (limit max 100) to paginate. The response then includes `"meta": { "total": 42, "page": 1, "limit": 10 }`.
 
 ---
 

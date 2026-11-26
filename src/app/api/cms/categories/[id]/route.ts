@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { prisma } from '../../../../../lib/prisma';
-import { authorizeUser } from '../../../../../features/auth/rbac';
-import { ApiResponse } from '../../../../../lib/api-response';
+import { prisma } from '@/lib/prisma';
+import { authorizeUser } from '@/features/auth/rbac';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
 
 interface DeleteParams {
   params: Promise<{ id: string }>;
@@ -49,9 +50,8 @@ export async function DELETE(request: NextRequest, { params }: DeleteParams) {
     });
 
     return ApiResponse.success({ message: 'Category deleted successfully.' });
-  } catch (err: any) {
-    console.error('API delete category error:', err);
-    return ApiResponse.error(err.code || 'DELETE_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API delete category error');
   }
 }
 

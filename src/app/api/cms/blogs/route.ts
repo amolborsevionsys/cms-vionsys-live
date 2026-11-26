@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server';
-import { BlogService } from '../../../../features/blogs/blog.service';
-import { requireAuth, authorizeUser } from '../../../../features/auth/rbac';
-import { ApiResponse } from '../../../../lib/api-response';
+import { BlogService } from '@/features/blogs/blog.service';
+import { blogCreateApiSchema } from '@/features/blogs/blog.validation';
+import { requireAuth, authorizeUser } from '@/features/auth/rbac';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
 
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
-    
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status') || undefined;
     const categoryId = searchParams.get('categoryId') || undefined;
@@ -29,22 +31,20 @@ export async function GET(request: NextRequest) {
       page: result.page,
       limit: result.limit
     });
-  } catch (err: any) {
-    console.error('API blogs list error:', err);
-    return ApiResponse.error(err.code || 'LIST_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API blogs list error');
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const session = await authorizeUser('content:create');
-    const body = await request.json();
+    const input = blogCreateApiSchema.parse(await request.json());
 
-    const result = await BlogService.createBlog(session.userId, body);
-    return ApiResponse.success(result, null, 212);
-  } catch (err: any) {
-    console.error('API blog create error:', err);
-    return ApiResponse.error(err.code || 'CREATE_FAILED', err.message, err.details, err.status || 400);
+    const result = await BlogService.createBlog(session, input);
+    return ApiResponse.success(result, null, 201);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API blog create error');
   }
 }
 export const dynamic = 'force-dynamic';

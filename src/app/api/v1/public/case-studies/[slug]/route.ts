@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { prisma } from '../../../../../../lib/prisma';
-import { CaseStudyMapper } from '../../../../../../features/case-studies/case-study.mapper';
-import { ApiResponse } from '../../../../../../lib/api-response';
-import { validatePublicApiKey } from '../../../../../../features/auth/validate-public-api-key';
+import { prisma } from '@/lib/prisma';
+import { CaseStudyMapper } from '@/features/case-studies/case-study.mapper';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
+import { validatePublicApiKey } from '@/features/auth/validate-public-api-key';
 
 export async function GET(
   request: NextRequest,
@@ -19,7 +20,6 @@ export async function GET(
     const cs = await prisma.caseStudy.findUnique({
       where: { slug },
       include: {
-        author: true,
         resultStats: true,
         processSteps: true,
         mediaGallery: true,
@@ -36,9 +36,8 @@ export async function GET(
 
     const publicCs = CaseStudyMapper.toPublicJson(cs);
     return ApiResponse.success(publicCs);
-  } catch (err: any) {
-    console.error('Public case study detail API error:', err);
-    return ApiResponse.serverError('An error occurred loading the case study.', err.message);
+  } catch (err: unknown) {
+    return handleApiError(err, 'Public case study detail API error');
   }
 }
 export const dynamic = 'force-dynamic';

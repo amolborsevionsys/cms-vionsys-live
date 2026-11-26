@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../lib/prisma';
-import { PreviewTokenService } from '../../../../../features/publishing/preview-token.service';
-import { BlogMapper } from '../../../../../features/blogs/blog.mapper';
-import { CaseStudyMapper } from '../../../../../features/case-studies/case-study.mapper';
-import { ApiResponse } from '../../../../../lib/api-response';
+import { prisma } from '@/lib/prisma';
+import { PreviewTokenService, type PreviewContentType } from '@/features/publishing/preview-token.service';
+import { BlogMapper } from '@/features/blogs/blog.mapper';
+import { CaseStudyMapper } from '@/features/case-studies/case-study.mapper';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
+import { isAllowedOrigin } from '@/lib/cors';
 
-function getCorsHeaders(request: NextRequest) {
-  const origin = request.headers.get('origin') || '*';
+/**
+ * CORS: only allow-listed origins are reflected (rule.md 7.13). Requests with no
+ * Origin header (server-to-server fetches from the website) need no CORS headers.
+ */
+function getCorsHeaders(request: NextRequest): Record<string, string> {
+  const origin = request.headers.get('origin');
+  if (!isAllowedOrigin(origin)) return {};
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-vionsys-cms-key',
     'Access-Control-Allow-Credentials': 'true',
+    Vary: 'Origin',
   };
 }
 
@@ -31,9 +39,8 @@ export async function GET(
 ) {
   const corsHeaders = getCorsHeaders(request);
   const applyCors = (res: NextResponse) => {
-    Object.entries(corsHeaders).forEach(([key, val]) => {
-      res.headers.set(key, val);
-    });
+    Object.entries(corsHeaders).forEach(([key, val]) => res.headers.set(key, val));
+    res.headers.set('Cache-Control', 'private, no-store');
     return res;
   };
 
@@ -41,54 +48,56 @@ export async function GET(
     const { token } = await params;
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
-    const type = searchParams.get('type'); // 'blog' or 'case-study'
+    const typeParam = searchParams.get('type'); // 'blog' or 'case-study'
 
-    if (!id || !type) {
+    if (!id || !typeParam) {
       return applyCors(
         ApiResponse.error('MISSING_PARAMS', 'Parameters "id" and "type" are required.', null, 400)
       );
     }
 
-    // Verify token
-    const isValid = PreviewTokenService.validateToken(id, token);
-    if (!isValid) {
-      return applyCors(ApiResponse.unauthorized('Invalid preview signature token.'));
+    // Anything other than "blog" has always been treated as a case study.
+    const type: PreviewContentType = typeParam === 'blog' ? 'blog' : 'case-study';
+
+    if (!PreviewTokenService.validateToken(id, type, token)) {
+      return applyCors(
+        ApiResponse.unauthorized('Invalid or expired preview link. Open the preview again from the CMS.')
+      );
     }
 
     if (type === 'blog') {
       const blog = await prisma.blogPost.findUnique({
         where: { id },
         include: {
-          author: true,
+          author: { select: { id: true, name: true, role: true } },
           category: true,
           tags: true,
           seoMeta: true,
           aeoGeoMeta: true,
-          schemaSettings: true
-        }
+          schemaSettings: true,
+        },
       });
       if (!blog) return applyCors(ApiResponse.notFound('Blog post not found.'));
       return applyCors(ApiResponse.success(BlogMapper.toAdminJson(blog)));
-    } else {
-      const cs = await prisma.caseStudy.findUnique({
-        where: { id },
-        include: {
-          author: true,
-          resultStats: true,
-          processSteps: true,
-          mediaGallery: true,
-          seoMeta: true,
-          aeoGeoMeta: true,
-          schemaSettings: true,
-          faqs: true
-        }
-      });
-      if (!cs) return applyCors(ApiResponse.notFound('Case study not found.'));
-      return applyCors(ApiResponse.success(CaseStudyMapper.toAdminJson(cs)));
     }
-  } catch (err: any) {
-    console.error('Preview token validation error:', err);
-    return applyCors(ApiResponse.serverError('An error occurred validating preview token.', err.message));
+
+    const cs = await prisma.caseStudy.findUnique({
+      where: { id },
+      include: {
+        author: { select: { id: true, name: true, role: true } },
+        resultStats: true,
+        processSteps: true,
+        mediaGallery: true,
+        seoMeta: true,
+        aeoGeoMeta: true,
+        schemaSettings: true,
+        faqs: true,
+      },
+    });
+    if (!cs) return applyCors(ApiResponse.notFound('Case study not found.'));
+    return applyCors(ApiResponse.success(CaseStudyMapper.toAdminJson(cs)));
+  } catch (err: unknown) {
+    return applyCors(handleApiError(err, 'Preview token validation error'));
   }
 }
 export const dynamic = 'force-dynamic';

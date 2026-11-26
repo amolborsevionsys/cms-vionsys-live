@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
-import { prisma } from '../../../../../lib/prisma';
-import { CaseStudyMapper } from '../../../../../features/case-studies/case-study.mapper';
-import { ApiResponse } from '../../../../../lib/api-response';
-import { validatePublicApiKey } from '../../../../../features/auth/validate-public-api-key';
+import { prisma } from '@/lib/prisma';
+import { CaseStudyMapper } from '@/features/case-studies/case-study.mapper';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
+import { parseOptionalPagination } from '@/lib/pagination';
+import { validatePublicApiKey } from '@/features/auth/validate-public-api-key';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,29 +13,38 @@ export async function GET(request: NextRequest) {
       return ApiResponse.unauthorized('Missing or invalid API Key in header "x-vionsys-cms-key".');
     }
 
-    const caseStudies = await prisma.caseStudy.findMany({
-      where: { publishedAt: { not: null } },
-      orderBy: { publishedAt: 'desc' },
-      include: {
-        author: true,
-        resultStats: true,
-        processSteps: true,
-        mediaGallery: true,
-        seoMeta: true,
-        aeoGeoMeta: true,
-        schemaSettings: true,
-        faqs: true
-      }
-    });
+    // Optional ?limit=&page=. Without them every published case study is returned (unchanged behaviour).
+    const pagination = parseOptionalPagination(request.nextUrl.searchParams);
+    const where = { publishedAt: { not: null } };
+
+    const [caseStudies, total] = await Promise.all([
+      prisma.caseStudy.findMany({
+        where,
+        orderBy: { publishedAt: 'desc' },
+        ...(pagination ? { skip: pagination.skip, take: pagination.take } : {}),
+        include: {
+          resultStats: true,
+          processSteps: true,
+          mediaGallery: true,
+          seoMeta: true,
+          aeoGeoMeta: true,
+          schemaSettings: true,
+          faqs: true
+        }
+      }),
+      pagination ? prisma.caseStudy.count({ where }) : Promise.resolve(null),
+    ]);
 
     const publicCs = caseStudies
       .map(CaseStudyMapper.toPublicJson)
       .filter(Boolean); // Filter out unpublished ones
 
-    return ApiResponse.success(publicCs);
-  } catch (err: any) {
-    console.error('Public case studies list API error:', err);
-    return ApiResponse.serverError('An error occurred loading case studies data.', err.message);
+    return ApiResponse.success(
+      publicCs,
+      pagination ? { total, page: pagination.page, limit: pagination.limit } : undefined
+    );
+  } catch (err: unknown) {
+    return handleApiError(err, 'Public case studies list API error');
   }
 }
 export const dynamic = 'force-dynamic';

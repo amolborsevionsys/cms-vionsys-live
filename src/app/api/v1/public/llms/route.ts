@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { siteConfig } from '@/config/site';
 import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
 import { validatePublicApiKey } from '@/features/auth/validate-public-api-key';
 
 interface LlmBlogItem {
@@ -50,9 +51,7 @@ export async function GET(request: NextRequest) {
 
     return ApiResponse.success({ llmsTxt: txt });
   } catch (err: unknown) {
-    const error = err as Error;
-    console.error('Public llms API error:', error);
-    return ApiResponse.serverError('An error occurred generating LLM sitemap.', error.message);
+    return handleApiError(err, 'Public llms API error');
   }
 }
 export const dynamic = 'force-dynamic';

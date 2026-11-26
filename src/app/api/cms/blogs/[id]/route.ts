@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
-import { BlogService } from '../../../../../features/blogs/blog.service';
-import { requireAuth, authorizeUser } from '../../../../../features/auth/rbac';
-import { ApiResponse } from '../../../../../lib/api-response';
+import { BlogService } from '@/features/blogs/blog.service';
+import { blogUpdateApiSchema } from '@/features/blogs/blog.validation';
+import { requireAuth, authorizeUser } from '@/features/auth/rbac';
+import { ApiResponse } from '@/lib/api-response';
+import { handleApiError } from '@/lib/api-error';
 
 export async function GET(
   request: NextRequest,
@@ -13,9 +15,8 @@ export async function GET(
 
     const result = await BlogService.getBlogById(id);
     return ApiResponse.success(result);
-  } catch (err: any) {
-    console.error('API blog fetch error:', err);
-    return ApiResponse.error(err.code || 'FETCH_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API blog fetch error');
   }
 }
 
@@ -26,13 +27,12 @@ export async function PUT(
   try {
     const session = await authorizeUser('content:edit');
     const { id } = await params;
-    const body = await request.json();
+    const input = blogUpdateApiSchema.parse(await request.json());
 
-    const result = await BlogService.updateBlog(id, session.userId, body);
+    const result = await BlogService.updateBlog(id, session, input);
     return ApiResponse.success(result);
-  } catch (err: any) {
-    console.error('API blog update error:', err);
-    return ApiResponse.error(err.code || 'UPDATE_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API blog update error');
   }
 }
 
@@ -46,9 +46,8 @@ export async function DELETE(
 
     await BlogService.deleteBlog(id, session.userId);
     return ApiResponse.success({ message: 'Blog post deleted successfully.' });
-  } catch (err: any) {
-    console.error('API blog delete error:', err);
-    return ApiResponse.error(err.code || 'DELETE_FAILED', err.message, err.details, err.status || 400);
+  } catch (err: unknown) {
+    return handleApiError(err, 'API blog delete error');
   }
 }
 export const dynamic = 'force-dynamic';

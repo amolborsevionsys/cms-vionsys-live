@@ -225,30 +225,32 @@ Fix these when you work near them. Severity: 🔴 critical (fix before the next 
 
 | # | Sev | Issue | Where | Rule | Fix |
 |---|---|---|---|---|---|
-| V1 | 🔴 | Hard-coded dev API key `vionsys-cms-public-key-dev-2026` is accepted in **production** and is published in the docs and the API-keys page | [validate-public-api-key.ts:4-12](src/features/auth/validate-public-api-key.ts#L4-L12), [settings/api-keys/page.tsx](src/app/(cms)/settings/api-keys/page.tsx), [docs/API_CONTRACT.md](docs/API_CONTRACT.md) | 7.9 | Gate it on `NODE_ENV !== 'production'`, read it from an env var, remove it from the UI and docs |
-| V2 | 🔴 | Hard-coded fallback secrets for `JWT_SECRET` and `FRONTEND_REVALIDATE_SECRET`. If the variable is missing, anyone can forge sessions and preview tokens | [env.ts:3](src/lib/env.ts#L3), [site.ts:7](src/config/site.ts#L7) | 7.4 | Zod-validated env that throws in production. If any environment uses these default values, rotate them, because they are public in git |
-| V3 | 🔴 | Raw HTML is never sanitised on the server. `sanitizeHtml()` exists but is never called, and Editor.js's **Raw HTML** tool is enabled. Stored XSS on vionsys.com | [sanitize-html.ts](src/lib/sanitize-html.ts), [RichTextEditor.tsx:95](src/components/cms/editor/RichTextEditor.tsx#L95), blog and case-study services | 6.5 | Sanitise `contentHtml`, `challengeHtml`, and `approachHtml` in the services with an allow-list library (allow the `faq-block` / `stats-block` / `cta-block` / `key-takeaways` classes). Longer term, replace the Raw-HTML custom blocks with dedicated Editor.js block tools |
-| V4 | 🔴 | Request bodies are never validated. The Zod schemas are imported only for types, and the body is passed straight to Prisma (mass assignment) | [blogs/route.ts](src/app/api/cms/blogs/route.ts), [blog.service.ts](src/features/blogs/blog.service.ts), the case-study equivalents | 6.1, 6.3 | `schema.strict().parse(body)` in every handler |
-| V5 | 🔴 | Privilege escalation: an `EDITOR` (no `content:publish`) can publish or archive by sending `status` in `PUT`. `hasPermission` is imported but unused | [blog.service.ts:205](src/features/blogs/blog.service.ts#L205), case-study service | 7.10 | Check `content:publish` / `content:archive` when `status` changes |
-| V6 | 🟠 | Bootstrap backdoor: on an empty database, `admin@vionsys.com` / `admin123` creates a `SUPER_ADMIN` through the public login route | [auth/login/route.ts:24](src/app/api/cms/auth/login/route.ts#L24) | 7.3 | Move it to a seed script that reads credentials from env |
-| V7 | 🟠 | API keys are stored and compared in plaintext (the `keyHash` column holds the raw key). `expiresAt` is ignored | [validate-public-api-key.ts:14-19](src/features/auth/validate-public-api-key.ts#L14-L19) | 7.8 | Hash on create, compare hashes, check expiry |
-| V8 | 🟠 | Preview endpoint reflects **any** `Origin` with `Allow-Credentials: true`. Preview tokens never expire and reuse `JWT_SECRET` | [preview/[token]/route.ts:11-14](src/app/api/cms/preview/[token]/route.ts#L11-L14), [preview-token.service.ts](src/features/publishing/preview-token.service.ts) | 7.13, 7.15, 7.7 | Origin allow-list, signed `exp`, separate `PREVIEW_SECRET` |
-| V9 | 🟠 | Publish checklist (`PublishService`) is never called by the API, so drafts with blockers can go live | [publish.service.ts](src/features/publishing/publish.service.ts) | 7.11 | Call `validate*` on any transition to `PUBLISHED` and return `422` with the issues |
-| V10 | 🟠 | Internal `err.message` is returned to clients, including on the public API | e.g. [v1/public/blogs/route.ts:34](src/app/api/v1/public/blogs/route.ts#L34), all `/api/cms/*` handlers | 9.3, 5.5 | A shared `handleApiError` |
-| V11 | 🟠 | Public endpoints load `author: true` (including `passwordHash`) and are not paginated | [v1/public/blogs/route.ts](src/app/api/v1/public/blogs/route.ts) | 8.5, 4.8 | `select` only the public fields, add `limit`/`cursor` |
-| V12 | 🟠 | Every build runs `prisma db push`, Preview deployments included | [package.json](package.json) `build` | 8.2 | `"build": "prisma generate && next build"`, run `db:push` as a deliberate step |
+| V1 | 🟠 | The shared dev API key `vionsys-cms-public-key-dev-2026` is still accepted in production, because the live website authenticates with it. It is now configurable and can be switched off, and its first use per server instance logs a warning | [validate-public-api-key.ts](src/features/auth/validate-public-api-key.ts), [env.ts](src/lib/env.ts) | 7.9 | **Ops step:** `npm run api-key:create -- "vionsys.com"`, put the printed key in the website's env, deploy the website, then set `PUBLIC_API_DISABLE_DEV_KEY=true` on the CMS |
+| V2 | 🟠 | Missing secrets still fall back to the old built-in defaults (so a deploy without them keeps working). Production now logs an error for each fallback | [env.ts](src/lib/env.ts) | 7.4 | **Ops step:** confirm `JWT_SECRET` and `FRONTEND_REVALIDATE_SECRET` are set in Vercel with non-default values (check `/api/cms/env-check`), then set `ENV_STRICT=true` so a missing secret fails the deploy |
 | V13 | 🟠 | No rate limiting on login or the public API | — | 7.14 | Upstash Ratelimit or Vercel WAF rules |
-| V14 | 🟡 | `middleware.ts` uses the deprecated convention | [src/middleware.ts](src/middleware.ts) | 7.1 | `npx @next/codemod@canary middleware-to-proxy .` |
-| V15 | 🟡 | Folder creation (`POST /api/cms/media`) needs only a session, so `VIEWER` can create folders | [media/route.ts:41](src/app/api/cms/media/route.ts#L41) | 7.10 | `authorizeUser('media:upload')` |
-| V16 | 🟡 | Create endpoints return HTTP **212** instead of 201 | [blogs/route.ts:44](src/app/api/cms/blogs/route.ts#L44), [case-studies/route.ts:44](src/app/api/cms/case-studies/route.ts#L44) | 5.3 | `201` |
-| V17 | 🟡 | Duplicate slug returns 400 and is checked only before writing (race) | blog and case-study services | 8.7, 5.3 | Catch `P2002` and return `409` |
 | V18 | 🟡 | `SCHEDULED` status has no scheduler. Case studies cannot be unpublished (`publishedAt` never cleared, no `status`) | services, `schema.prisma` | — | Vercel Cron route that publishes due posts. Add `status` to `CaseStudy` |
 | V19 | 🟡 | No `error.tsx`, `not-found.tsx`, `loading.tsx`, security headers, or admin `noindex` | `src/app/`, [next.config.ts](next.config.ts) | 9.1, 7.12, 10.5 | Add them |
-| V20 | 🟡 | ~130 `any`, deep relative imports, `require()` in login, `console.log` in routes | across `src/` | 2.2, 1.4, 2.5, 9.4 | Fix when you touch the file |
+| V20 | 🟡 | ~120 `any` and some deep relative imports remain outside the API routes and services | across `src/` (mainly `components/`) | 2.2, 1.4 | Fix when you touch the file |
 | V21 | 🟡 | Unused dependencies: 12 `@tiptap/*` packages, `lowlight`, `react-hook-form`, `@hookform/resolvers` | [package.json](package.json) | 2.6 | `npm uninstall …` |
 | V22 | 🟡 | No `import 'server-only'` guard on server modules | `lib/prisma.ts`, `lib/env.ts`, `features/**` | 3.2 | Add the import |
 | V23 | 🟡 | No tests, no CI | — | 11 | Vitest + a GitHub Actions workflow |
 | V24 | 🟡 | `robots-generator.ts` disallows `/api/v1/private/` and `/admin/`, which do not exist | [robots-generator.ts](src/features/seo/robots-generator.ts) | — | Align it with the real frontend routes |
+
+**Fixed (2026-11-26):**
+- V3: HTML is sanitised server-side with an allow-list ([sanitize-html.ts](src/lib/sanitize-html.ts)).
+- V4: request bodies are validated with Zod ([content-input.validation.ts](src/features/shared/content-input.validation.ts)).
+- V5: publish and archive permissions are enforced on status changes ([content-permissions.ts](src/features/auth/content-permissions.ts)).
+- V6: the `admin123` bootstrap runs only in development or with explicit env credentials.
+- V7: API keys are hashed and their expiry is enforced.
+- V8: preview CORS uses the allow-list, and preview tokens expire after 7 days, are bound to the content type, and are signed with `PREVIEW_SECRET`.
+- V9: the publish checklist is enforced server-side ([publish.service.ts](src/features/publishing/publish.service.ts)).
+- V10: all handlers use [handleApiError](src/lib/api-error.ts).
+- V11: public routes no longer load `author`, and opt-in `?limit=&page=` pagination was added.
+- V12: Vercel Preview builds skip `db push` ([db-push.mjs](scripts/db-push.mjs)).
+- V14: renamed to [proxy.ts](src/proxy.ts).
+- V15: folder creation needs `media:upload`.
+- V16: create endpoints return 201.
+- V17: duplicate values return 409.
 
 When you fix one, delete its row in the same PR.
 

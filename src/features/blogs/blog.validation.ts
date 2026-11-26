@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
+import {
+  contentMetaInputShape,
+  contentStatusSchema,
+  jsonValue,
+  optionalString,
+} from '../shared/content-input.validation';
 
 export const blogFormSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title cannot exceed 200 characters'),
@@ -19,3 +26,44 @@ export const blogFormSchema = z.object({
 });
 
 export type BlogFormInput = z.infer<typeof blogFormSchema>;
+
+// ---------------------------------------------------------------------------
+// API request schemas (server-side). See features/shared/content-input.validation.ts
+// for why these check types only and do not repeat the form's editorial limits.
+// ---------------------------------------------------------------------------
+
+const blogInputShape = {
+  title: z.string(),
+  slug: optionalString,
+  excerpt: optionalString,
+  featuredImage: optionalString,
+  featuredImageAlt: optionalString,
+  categoryId: optionalString,
+  isFeatured: z.boolean(),
+  guestAuthor: optionalString,
+  internalNote: optionalString,
+  serviceIds: z.array(z.string()),
+  caseStudyIds: z.array(z.string()),
+  contentBriefUrl: optionalString,
+  status: contentStatusSchema,
+  contentHtml: z.string(),
+  contentJson: jsonValue,
+  ...contentMetaInputShape,
+};
+
+/** POST /api/cms/blogs */
+export const blogCreateApiSchema = z.object({
+  ...blogInputShape,
+  isFeatured: blogInputShape.isFeatured.default(false),
+  serviceIds: blogInputShape.serviceIds.default([]),
+  caseStudyIds: blogInputShape.caseStudyIds.default([]),
+  status: blogInputShape.status.default('DRAFT'),
+  contentHtml: blogInputShape.contentHtml.default(''),
+  contentJson: z.custom<Prisma.InputJsonValue>().optional().transform((v) => v ?? {}),
+});
+
+/** PUT /api/cms/blogs/:id. Every field optional, no defaults (missing = unchanged). */
+export const blogUpdateApiSchema = z.object(blogInputShape).partial();
+
+export type BlogCreateApiInput = z.infer<typeof blogCreateApiSchema>;
+export type BlogUpdateApiInput = z.infer<typeof blogUpdateApiSchema>;

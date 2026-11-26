@@ -2,12 +2,13 @@ import React from 'react';
 import { prisma } from '@/lib/prisma';
 import { requireAuthPage } from '@/features/auth/require-auth';
 import { CmsShell } from '@/components/cms/layout/CmsShell';
-import { Key, Eye } from 'lucide-react';
+import { Key } from 'lucide-react';
 
 export default async function ApiKeysSettingsPage() {
   await requireAuthPage();
   const keys = await prisma.apiKey.findMany({
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, keyHash: true, isActive: true, expiresAt: true },
   });
 
   return (
@@ -32,7 +33,9 @@ export default async function ApiKeysSettingsPage() {
             <div className="p-6 text-xs text-slate-500 space-y-4">
               <p>No custom API keys registered in the database yet.</p>
               <div className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-lg font-semibold text-[10px] text-indigo-800 leading-relaxed max-w-lg">
-                💡 Development Fallback Key: <code className="bg-indigo-50/50 px-1 py-0.5 rounded-sm">vionsys-cms-public-key-dev-2026</code> is active for testing integration queries from local servers.
+                The website currently authenticates with the shared development key. Create a dedicated key with{' '}
+                <code className="bg-indigo-50/50 px-1 py-0.5 rounded-sm">node scripts/create-api-key.mjs &quot;vionsys.com&quot;</code>,
+                switch the website to it, then set <code className="bg-indigo-50/50 px-1 py-0.5 rounded-sm">PUBLIC_API_DISABLE_DEV_KEY=true</code>.
               </div>
             </div>
           ) : (
@@ -41,7 +44,7 @@ export default async function ApiKeysSettingsPage() {
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-450 font-bold uppercase tracking-wider text-[9px]">
                     <th className="py-2.5 px-6">Name</th>
-                    <th className="py-2.5 px-4">Key hash</th>
+                    <th className="py-2.5 px-4">Key hash (prefix)</th>
                     <th className="py-2.5 px-4">Status</th>
                     <th className="py-2.5 px-4">Expires</th>
                   </tr>
@@ -50,7 +53,7 @@ export default async function ApiKeysSettingsPage() {
                   {keys.map(k => (
                     <tr key={k.id} className="hover:bg-slate-50/30">
                       <td className="py-3.5 px-6 font-semibold text-slate-800">{k.name}</td>
-                      <td className="py-3.5 px-4 font-mono text-slate-400 truncate max-w-[120px]">{k.keyHash}</td>
+                      <td className="py-3.5 px-4 font-mono text-slate-400 truncate max-w-[120px]">{k.keyHash.slice(0, 8)}…</td>
                       <td className="py-3.5 px-4">
                         <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold border ${
                           k.isActive 

@@ -3,9 +3,9 @@ export const siteConfig = {
   description: 'Premium no-code publishing platform for Vionsys blogs and case studies.',
   cmsUrl: process.env.CMS_BASE_URL || 'https://cms-vionsys-live.vercel.app',
   frontendUrl: process.env.VIONSYS_FRONTEND_BASE_URL || 'https://www.vionsys.com',
-  revalidateUrl: process.env.FRONTEND_REVALIDATE_URL || 'https://www.vionsys.com/api/revalidate/cms',
-  revalidateSecret: process.env.FRONTEND_REVALIDATE_SECRET || 'vionsys-cms-revalidate-secret-2026',
-  
+  // Revalidation URL/secret live in src/lib/env.ts (server-only). This file is
+  // also bundled into client components, so it must never contain secrets.
+
   // Storage Configurations
   storage: {
     uploadDir: 'public/uploads',
