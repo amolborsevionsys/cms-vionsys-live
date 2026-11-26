@@ -225,7 +225,7 @@ export default async function CaseStudyPreviewPage({ params }: CaseStudyPreviewP
           {cs.faqs && cs.faqs.length > 0 && (
             <div className="px-8 border-t border-slate-100 pt-8 space-y-6">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-brand-50 rounded-lg text-brand-650">
+                <div className="p-1.5 bg-brand-50 rounded-lg text-brand-600">
                   <HelpCircle className="w-4 h-4" />
                 </div>
                 <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Frequently Asked Questions</h2>

@@ -37,7 +37,7 @@ export function CmsTopbar() {
           <div className="flex gap-2">
             <Link
               href="/blogs/new"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-brand-650 hover:bg-brand-700 active-press rounded-lg shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-700 active-press rounded-lg shadow-xs transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               Write Blog

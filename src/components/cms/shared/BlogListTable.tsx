@@ -10,6 +10,7 @@ import {
   getBlogLiveUrl,
   isPublishedContent,
 } from '@/lib/frontend-urls';
+import { formatDate } from '@/lib/format-date';
 
 interface BlogPostWithRelations {
   id: string;
@@ -100,7 +101,7 @@ export function BlogListTable({ posts }: BlogListTableProps) {
           />
         </div>
         {selectedIds.length > 0 && (
-          <span className="text-[11px] font-bold text-brand-650 bg-brand-50 px-2 py-0.5 rounded-md">
+          <span className="text-[11px] font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-md">
             {selectedIds.length} Selected
           </span>
         )}
@@ -173,7 +174,7 @@ export function BlogListTable({ posts }: BlogListTableProps) {
                         {post.author.name}
                       </td>
                       <td className="py-3.5 px-3 text-slate-400 font-semibold">
-                        {new Date(post.updatedAt).toLocaleDateString()}
+                        {formatDate(post.updatedAt)}
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-1 shrink-0">
                         {isPublishedContent(post.status, post.publishedAt) ? (

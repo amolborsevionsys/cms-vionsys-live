@@ -5,6 +5,7 @@ import { Eye, Edit, Trash2, CheckSquare, Square, Trash, Search, Briefcase } from
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatDate } from '@/lib/format-date';
 
 interface CaseStudyWithRelations {
   id: string;
@@ -94,7 +95,7 @@ export function CaseStudyListTable({ caseStudies }: CaseStudyListTableProps) {
           />
         </div>
         {selectedIds.length > 0 && (
-          <span className="text-[11px] font-bold text-brand-650 bg-brand-50 px-2 py-0.5 rounded-md animate-pulse">
+          <span className="text-[11px] font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-md animate-pulse">
             {selectedIds.length} Selected
           </span>
         )}
@@ -168,7 +169,7 @@ export function CaseStudyListTable({ caseStudies }: CaseStudyListTableProps) {
                       </td>
 
                       <td className="py-3.5 px-3 text-slate-400 font-semibold">
-                        {new Date(cs.updatedAt).toLocaleDateString()}
+                        {formatDate(cs.updatedAt)}
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-1 shrink-0">
                         <a
