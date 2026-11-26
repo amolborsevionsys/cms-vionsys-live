@@ -2,7 +2,7 @@
 
 This file outlines the configuration variables needed in a local `.env` file to run the CMS.
 
-Create a `.env` file at the root of the `cms` folder:
+Create a `.env` file at the repository root (next to `package.json`). The values below are **examples only**. Use your own random secrets in every shared environment:
 
 ```bash
 # Database connections URL (MongoDB — must match prisma/schema.prisma)

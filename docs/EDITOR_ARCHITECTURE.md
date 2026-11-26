@@ -7,14 +7,14 @@ This document describes the design and flow of the editor canvas, which is the m
 ```mermaid
 graph LR
     UserContent["User Writing Content"]
-    Tiptap["Tiptap Editor Engine"]
+    EditorJS["Editor.js Engine"]
     LocalState["Controlled Local React State"]
     AutosaveTimer["Autosave Loop (30s)"]
     ExitBlur["Tab Blur Listener"]
-    PrismaDB["PostgreSQL DB (Prisma)"]
+    PrismaDB["MongoDB (Prisma)"]
 
-    UserContent --> Tiptap
-    Tiptap -- "onChange callback" --> LocalState
+    UserContent --> EditorJS
+    EditorJS -- "onChange → editorJsToHtml()" --> LocalState
     LocalState --> AutosaveTimer
     LocalState --> ExitBlur
     AutosaveTimer -- "PUT request if changed" --> PrismaDB
@@ -27,7 +27,7 @@ graph LR
 
 Located inside `src/components/cms/editor/`:
 - **ContentEditorShell**: The orchestrator page wrapper. Maintains forms state, autosave timers, preview redirects, and publish validation triggers.
-- **RichTextEditor**: Integrates the Tiptap engine, bubble editing menus, custom blocks dropdown, and binds with the Media Library Picker modal.
+- **RichTextEditor**: Loads Editor.js on the client only (dynamic imports) with the header, list, table, quote, code, raw, image, and underline tools. It adds a custom-blocks dropdown and connects to the Media Library Picker modal. Blocks are converted to HTML and text by `src/lib/editorjs-parser.ts`.
 - **ContentIntelligenceBar**: The bottom statistics bar calculating word counts, reading time, keyword density, and checking semantic heading structures.
 
 ---
@@ -35,10 +35,11 @@ Located inside `src/components/cms/editor/`:
 ## Custom Block Injector Architecture
 
 Writers can inject complex modular layouts (like FAQs, Stats, CTAs, and Testimonials) without coding.
-1. **Insertion**: The toolbar inserts these blocks as pre-styled semantic HTML snippets with distinct classes (e.g. `<div class="stats-block">...</div>`).
-2. **Output**: The database stores two forms of editor output:
-   - `contentJson`: The complete raw Tiptap state object for editor recovery.
-   - `contentHtml`: Clean, sanitized, semantic HTML for frontend presentation.
+1. **Insertion**: The dropdown inserts these as Editor.js **Raw HTML** blocks containing pre-styled snippets with distinct classes (e.g. `<div class="stats-block">...</div>`).
+2. **Output**: The database stores three forms of editor output:
+   - `contentJson`: The complete Editor.js `OutputData` object, used to restore the editor.
+   - `contentHtml`: HTML generated in the browser for frontend presentation. It is **not yet sanitised on the server** ([rule.md §12 V3](../rule.md#12-known-violations-in-this-repo)).
+   - `contentText`: Plain text, used for search and the content metrics.
 
 ---
 

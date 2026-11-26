@@ -4,30 +4,43 @@ This document describes how to integrate the CMS data into the public Vionsys we
 
 ## 1. Purging Caches / Revalidation Webhook
 
-When content changes (published, slug updated, deleted), the CMS dispatches a POST request to:
-`https://vionsys.com/api/revalidate`
+When published content changes (published, updated, slug changed, deleted), the CMS sends a POST request to `FRONTEND_REVALIDATE_URL`, which defaults to
+`https://www.vionsys.com/api/revalidate/cms`. See [revalidation.service.ts](../src/features/publishing/revalidation.service.ts).
+
+### Headers sent:
+- `x-revalidate-secret: <FRONTEND_REVALIDATE_SECRET>`
+- `Content-Type: application/json`
 
 ### Payload dispatched:
 ```json
 {
   "paths": [
+    "/",
     "/blog",
     "/blog/dynamic-article-slug",
-    "/sitemap.xml"
-  ]
+    "/sitemap.xml",
+    "/sitemap-blog.xml",
+    "/blog/old-slug-if-changed"
+  ],
+  "action": "update",
+  "contentType": "blog",
+  "slug": "dynamic-article-slug",
+  "blogSlug": "dynamic-article-slug"
 }
 ```
 
-### Handler implementation in `vionsys.com` (`app/api/revalidate/route.ts`):
+For case studies the paths are `/case-studies/...` and `/sitemap-case-studies.xml`, with `contentType: "case-study"` and `caseStudySlug`. Deletes send `action: "delete"`. The request times out after 10 s, and a failure does not block the CMS save.
+
+### Handler implementation in `vionsys.com` (`app/api/revalidate/cms/route.ts`):
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 
 export async function POST(request: NextRequest) {
-  const authorization = request.headers.get('Authorization');
+  const provided = request.headers.get('x-revalidate-secret');
   const secret = process.env.FRONTEND_REVALIDATE_SECRET;
 
-  if (authorization !== `Bearer ${secret}`) {
+  if (!secret || provided !== secret) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 

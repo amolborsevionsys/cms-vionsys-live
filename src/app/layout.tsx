@@ -25,7 +25,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${manrope.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${outfit.variable} ${manrope.variable} h-full antialiased`}
+      // Browser extensions (e.g. LocatorJS, Grammarly, dark-mode tools) inject attributes on <html>.
+      suppressHydrationWarning
+    >
       <body className="min-h-full bg-slate-50/30 flex flex-col text-slate-800">
         {children}
       </body>

@@ -5,8 +5,8 @@ This document outlines the API specifications for consuming published content fr
 ## Security & Authentication
 
 All endpoints require the API authentication key supplied in the request headers:
-- Header Key: `x-vionsys-cms-key`
-- Dev Value: `vionsys-cms-public-key-dev-2026`
+- Header Key: `x-vionsys-cms-key` (`x-api-key` is also accepted)
+- Dev Value: `vionsys-cms-public-key-dev-2026`. **Warning:** this key is currently accepted in production too ([rule.md §12 V1](../rule.md#12-known-violations-in-this-repo)).
 
 ---
 
@@ -60,7 +60,7 @@ All endpoints require the API authentication key supplied in the request headers
 - **Path**: `/api/v1/public/case-studies`
 - **Method**: `GET`
 - **Response**: Mapped project outcome documents.
-- **Anonymization Logic**: If client anonymization is toggled on, actual branding names/logos are scrubbed and replaced with safe descriptions (e.g., "A leading Healthcare Provider").
+- **Client name**: `clientDisplayName` is currently always the real `clientName`, and `clientLogo` is returned as stored. Client anonymisation is **not implemented** yet: there is no toggle in the schema.
 
 ---
 
