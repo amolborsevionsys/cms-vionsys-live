@@ -1,5 +1,5 @@
 datasource db {
-  provider = "mongodb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -30,7 +30,7 @@ enum EngagementType {
 
 
 model User {
-  id           String        @id @default(uuid()) @map("_id")
+  id           String        @id @default(uuid())
   email        String        @unique
   passwordHash String
   name         String
@@ -43,7 +43,7 @@ model User {
 }
 
 model BlogPost {
-  id                 String           @id @default(uuid()) @map("_id")
+  id                 String           @id @default(uuid())
   title              String
   slug               String           @unique
   contentJson        Json
@@ -69,8 +69,7 @@ model BlogPost {
   author             User             @relation(fields: [authorId], references: [id])
   categoryId         String?
   category           Category?        @relation(fields: [categoryId], references: [id])
-  tags               Tag[]            @relation(fields: [tagIds], references: [id])
-  tagIds             String[]
+  tags               Tag[]            // many-to-many (join table _BlogPostToTag)
   seoMetaId          String?          @unique
   seoMeta            SeoMeta?         @relation(fields: [seoMetaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   aeoGeoMetaId       String?          @unique
@@ -81,7 +80,7 @@ model BlogPost {
 }
 
 model CaseStudy {
-  id                     String               @id @default(uuid()) @map("_id")
+  id                     String               @id @default(uuid())
   title                  String
   slug               String           @unique
   clientName             String
@@ -139,7 +138,7 @@ model CaseStudy {
 }
 
 model CaseStudyFaq {
-  id          String    @id @default(uuid()) @map("_id")
+  id          String    @id @default(uuid())
   caseStudyId String
   caseStudy   CaseStudy @relation(fields: [caseStudyId], references: [id], onDelete: Cascade)
   question    String
@@ -151,7 +150,7 @@ model CaseStudyFaq {
 
 
 model ResultStat {
-  id          String    @id @default(uuid()) @map("_id")
+  id          String    @id @default(uuid())
   caseStudyId String
   caseStudy   CaseStudy @relation(fields: [caseStudyId], references: [id], onDelete: Cascade)
   value       String
@@ -162,7 +161,7 @@ model ResultStat {
 }
 
 model ProcessStep {
-  id          String    @id @default(uuid()) @map("_id")
+  id          String    @id @default(uuid())
   caseStudyId String
   caseStudy   CaseStudy @relation(fields: [caseStudyId], references: [id], onDelete: Cascade)
   title       String
@@ -174,7 +173,7 @@ model ProcessStep {
 }
 
 model MediaGalleryItem {
-  id          String    @id @default(uuid()) @map("_id")
+  id          String    @id @default(uuid())
   caseStudyId String
   caseStudy   CaseStudy @relation(fields: [caseStudyId], references: [id], onDelete: Cascade)
   imagePath   String
@@ -186,7 +185,7 @@ model MediaGalleryItem {
 }
 
 model SeoMeta {
-  id                String     @id @default(uuid()) @map("_id")
+  id                String     @id @default(uuid())
   blogPost          BlogPost?
   caseStudy         CaseStudy?
   title             String
@@ -203,7 +202,7 @@ model SeoMeta {
 }
 
 model AeoGeoMeta {
-  id                 String     @id @default(uuid()) @map("_id")
+  id                 String     @id @default(uuid())
   blogPost           BlogPost?
   caseStudy          CaseStudy?
   directAnswerPrompt String?
@@ -218,7 +217,7 @@ model AeoGeoMeta {
 }
 
 model SchemaSettings {
-  id               String     @id @default(uuid()) @map("_id")
+  id               String     @id @default(uuid())
   blogPost         BlogPost?
   caseStudy        CaseStudy?
   type             String     // e.g. "BlogPosting", "CaseStudy"
@@ -226,7 +225,7 @@ model SchemaSettings {
 }
 
 model MediaAsset {
-  id           String       @id @default(uuid()) @map("_id")
+  id           String       @id @default(uuid())
   filename     String
   filepath     String
   url          String
@@ -245,7 +244,7 @@ model MediaAsset {
 }
 
 model MediaFolder {
-  id        String       @id @default(uuid()) @map("_id")
+  id        String       @id @default(uuid())
   name      String
   parentId  String?
   parent    MediaFolder? @relation("SubFolders", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -257,7 +256,7 @@ model MediaFolder {
 }
 
 model Redirect {
-  id         String   @id @default(uuid()) @map("_id")
+  id         String   @id @default(uuid())
   fromPath   String   @unique
   toPath     String
   statusCode Int      @default(301)
@@ -266,7 +265,7 @@ model Redirect {
 }
 
 model Category {
-  id          String     @id @default(uuid()) @map("_id")
+  id          String     @id @default(uuid())
   name        String     @unique
   slug        String     @unique
   description String?
@@ -276,17 +275,16 @@ model Category {
 }
 
 model Tag {
-  id        String     @id @default(uuid()) @map("_id")
+  id        String     @id @default(uuid())
   name      String     @unique
   slug      String     @unique
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  posts     BlogPost[] @relation(fields: [postIds], references: [id])
-  postIds   String[]
+  posts     BlogPost[]
 }
 
 model SiteSettings {
-  id        String   @id @default(uuid()) @map("_id")
+  id        String   @id @default(uuid())
   orgName   String   @default("Vionsys")
   orgLogo   String?
   orgUrl    String   @default("https://vionsys.com")
@@ -296,7 +294,7 @@ model SiteSettings {
 }
 
 model ApiKey {
-  id        String    @id @default(uuid()) @map("_id")
+  id        String    @id @default(uuid())
   name      String
   keyHash   String    @unique
   role      Role      @default(VIEWER)
@@ -307,7 +305,7 @@ model ApiKey {
 }
 
 model ActivityLog {
-  id        String   @id @default(uuid()) @map("_id")
+  id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   action    String
@@ -316,7 +314,7 @@ model ActivityLog {
 }
 
 model VersionHistory {
-  id          String     @id @default(uuid()) @map("_id")
+  id          String     @id @default(uuid())
   blogPostId  String?
   blogPost    BlogPost?  @relation(fields: [blogPostId], references: [id], onDelete: Cascade)
   caseStudyId String?
@@ -333,7 +331,7 @@ model VersionHistory {
 // Collection and field names are mapped to the original case-study-only names, so data
 // uploaded before blog support was added keeps working without a migration.
 model ContentSource {
-  id          String   @id @default(uuid()) @map("_id")
+  id          String   @id @default(uuid())
   /// Case study or blog post id (UUIDs, so ids never collide across types).
   ownerId     String   @map("caseStudyId")
   /// "case-study" | "blog". Null on records created before blog support (= case study).
@@ -353,7 +351,7 @@ model ContentSource {
 }
 
 model ContentSourceChunk {
-  id        String  @id @default(uuid()) @map("_id")
+  id        String  @id @default(uuid())
   sourceId  String
   ownerId   String  @map("caseStudyId")
   position  Int

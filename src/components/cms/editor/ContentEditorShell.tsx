@@ -318,7 +318,13 @@ export function ContentEditorShell({
   };
 
   // --- SAVE OPERATION ---
-  const handleSave = async (isDraft = true, statusOverride?: string): Promise<boolean> => {
+  // background: autosave, preview and image saves. They never change a live page's URL;
+  // only an explicit Save or Publish does (a half-typed slug must not go live).
+  const handleSave = async (
+    isDraft = true,
+    statusOverride?: string,
+    { background = false }: { background?: boolean } = {}
+  ): Promise<boolean> => {
     if (isSavingRef.current) {
       if (statusOverride === 'PUBLISHED') {
         const started = Date.now();
@@ -357,6 +363,10 @@ export function ContentEditorShell({
       body.challengeJson = activeState.contentJson;
       body.heroImage = activeState.docData.featuredImage ?? null;
       body.heroImageAlt = activeState.docData.featuredImageAlt ?? null;
+    }
+
+    if (background && isPublishedContent(activeState.docData.status, initialData?.publishedAt)) {
+      delete body.slug;
     }
 
     if (contentType === 'blog') {
@@ -435,7 +445,7 @@ export function ContentEditorShell({
     };
     docDataRef.current = { ...docDataRef.current, docData: nextDocData };
     setDocData(nextDocData);
-    void handleSave(true);
+    void handleSave(true, undefined, { background: true });
   };
 
   // --- PREVIEW ON THE WEBSITE ---
@@ -446,7 +456,7 @@ export function ContentEditorShell({
     // Open the tab during the click (pop-up blockers allow that), then point it at the
     // preview once any pending changes are saved.
     const previewTab = window.open('', '_blank');
-    if (hasChangesRef.current) await handleSave(true);
+    if (hasChangesRef.current) await handleSave(true, undefined, { background: true });
     const url = `/api/cms/preview?id=${encodeURIComponent(id)}`;
     if (previewTab) previewTab.location.href = url;
     else window.open(url, '_blank');
@@ -472,7 +482,7 @@ export function ContentEditorShell({
   useEffect(() => {
     const timer = setInterval(() => {
       if (hasChangesRef.current && id) {
-        handleSave(true);
+        handleSave(true, undefined, { background: true });
       }
     }, 30000);
 
@@ -483,7 +493,7 @@ export function ContentEditorShell({
   useEffect(() => {
     const handleBlur = () => {
       if (hasChangesRef.current && id) {
-        handleSave(true);
+        handleSave(true, undefined, { background: true });
       }
     };
 

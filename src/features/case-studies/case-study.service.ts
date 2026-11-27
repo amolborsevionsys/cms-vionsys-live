@@ -4,6 +4,7 @@ import { slugify } from '../../lib/slugify';
 import { AppError } from '../../lib/errors';
 import { CaseStudyMapper } from './case-study.mapper';
 import { RevalidationService } from '../publishing/revalidation.service';
+import { claimPath, recordMove, recordRemoval } from '../publishing/redirects';
 import { createDefaultContentMeta } from '../../lib/content-meta';
 import {
   hasCaseStudyContentChanged,
@@ -244,6 +245,7 @@ export class CaseStudyService {
     const mapped = CaseStudyMapper.toAdminJson(finalCs!);
 
     if (mapped.publishedAt) {
+      await claimPath(`/case-studies/${mapped.slug}`);
       await RevalidationService.onCaseStudyChange(mapped.slug);
     }
 
@@ -324,9 +326,10 @@ export class CaseStudyService {
     if (isTemplateId(input.templateId)) updates.templateId = input.templateId;
 
     // Handle slug change & Redirects
-    if (input.slug !== undefined && input.slug !== existing.slug) {
-      const finalSlug = slugify(input.slug);
-      
+    // Compare the cleaned slug: "My Slug" and "my-slug" are the same URL. An empty
+    // result (field cleared or only symbols typed) keeps the current slug.
+    const finalSlug = input.slug !== undefined ? slugify(input.slug) : '';
+    if (finalSlug && finalSlug !== existing.slug) {
       const isSlugTaken = await prisma.caseStudy.findFirst({
         where: { slug: finalSlug, id: { not: id } }
       });
@@ -335,17 +338,6 @@ export class CaseStudyService {
       }
       
       updates.slug = finalSlug;
-
-      if (existing.publishedAt) {
-        const fromPath = `/case-studies/${existing.slug}`;
-        const toPath = `/case-studies/${finalSlug}`;
-        
-        await prisma.redirect.upsert({
-          where: { fromPath },
-          update: { toPath, statusCode: 301 },
-          create: { fromPath, toPath, statusCode: 301 }
-        });
-      }
     }
 
     // Handle published date
@@ -513,6 +505,13 @@ export class CaseStudyService {
 
     const result = CaseStudyMapper.toAdminJson(finalCs!);
 
+    // Redirects are written after the save succeeds, so a failed save leaves none behind.
+    if (wasPublished && result.slug !== previousSlug) {
+      await recordMove(`/case-studies/${previousSlug}`, `/case-studies/${result.slug}`);
+    } else if (result.publishedAt) {
+      await claimPath(`/case-studies/${result.slug}`);
+    }
+
     if (result.publishedAt || wasPublished) {
       await RevalidationService.onCaseStudyChange(result.slug, previousSlug);
     }
@@ -526,14 +525,6 @@ export class CaseStudyService {
 
     const wasLive = cs.publishedAt != null;
     const slug = cs.slug;
-
-    if (wasLive) {
-      await prisma.redirect.upsert({
-        where: { fromPath: `/case-studies/${slug}` },
-        update: { toPath: '/case-studies', statusCode: 301 },
-        create: { fromPath: `/case-studies/${slug}`, toPath: '/case-studies', statusCode: 301 },
-      });
-    }
 
     await prisma.$transaction([
       // Imported documents and their Ask AI search chunks belong to the case study.
@@ -549,6 +540,7 @@ export class CaseStudyService {
     ]);
 
     if (wasLive) {
+      await recordRemoval(`/case-studies/${slug}`, '/case-studies');
       await RevalidationService.onCaseStudyDelete(slug);
     }
 

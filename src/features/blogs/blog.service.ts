@@ -10,6 +10,7 @@ import { AppError } from '../../lib/errors';
 import { BlogMapper } from './blog.mapper';
 import { deleteAllSourcesOps } from '../ai/rag.service';
 import { RevalidationService } from '../publishing/revalidation.service';
+import { claimPath, recordMove, recordRemoval } from '../publishing/redirects';
 import { createDefaultContentMeta } from '../../lib/content-meta';
 import {
   hasBlogContentChanged,
@@ -167,6 +168,7 @@ export class BlogService {
     });
 
     if (result.status === 'PUBLISHED') {
+      await claimPath(`/blog/${result.slug}`);
       await RevalidationService.onBlogChange(result.slug);
     }
 
@@ -220,9 +222,10 @@ export class BlogService {
     }
 
     // Handle slug change & Redirects
-    if (input.slug !== undefined && input.slug !== existing.slug) {
-      const finalSlug = slugify(input.slug);
-      
+    // Compare the cleaned slug: "My Slug" and "my-slug" are the same URL. An empty
+    // result (field cleared or only symbols typed) keeps the current slug.
+    const finalSlug = input.slug !== undefined ? slugify(input.slug) : '';
+    if (finalSlug && finalSlug !== existing.slug) {
       // Verify slug uniqueness
       const isSlugTaken = await prisma.blogPost.findFirst({
         where: { slug: finalSlug, id: { not: id } },
@@ -232,18 +235,6 @@ export class BlogService {
       }
       
       updates.slug = finalSlug;
-
-      // If it was already published (or is now being updated as published), generate redirect
-      if (existing.status === 'PUBLISHED') {
-        const fromPath = `/blog/${existing.slug}`;
-        const toPath = `/blog/${finalSlug}`;
-        
-        await prisma.redirect.upsert({
-          where: { fromPath },
-          update: { toPath, statusCode: 301 },
-          create: { fromPath, toPath, statusCode: 301 },
-        });
-      }
     }
 
     // Set published date if status changing to PUBLISHED
@@ -346,6 +337,13 @@ export class BlogService {
 
     const result = BlogMapper.toAdminJson(finalResult!);
 
+    // Redirects are written after the save succeeds, so a failed save leaves none behind.
+    if (wasPublished && result.slug !== previousSlug) {
+      await recordMove(`/blog/${previousSlug}`, `/blog/${result.slug}`);
+    } else if (result.status === 'PUBLISHED') {
+      await claimPath(`/blog/${result.slug}`);
+    }
+
     if (result.status === 'PUBLISHED' || wasPublished) {
       await RevalidationService.onBlogChange(result.slug, previousSlug);
     }
@@ -359,14 +357,6 @@ export class BlogService {
 
     const wasLive = blog.status === 'PUBLISHED' || blog.publishedAt != null;
     const slug = blog.slug;
-
-    if (wasLive) {
-      await prisma.redirect.upsert({
-        where: { fromPath: `/blog/${slug}` },
-        update: { toPath: '/blog', statusCode: 301 },
-        create: { fromPath: `/blog/${slug}`, toPath: '/blog', statusCode: 301 },
-      });
-    }
 
     await prisma.$transaction([
       // Imported documents and their Ask AI search chunks belong to the post.
@@ -382,6 +372,7 @@ export class BlogService {
     ]);
 
     if (wasLive) {
+      await recordRemoval(`/blog/${slug}`, '/blog');
       await RevalidationService.onBlogDelete(slug);
     }
 

@@ -21,12 +21,11 @@ function maskSecret(value: string): string {
 
 function maskDatabaseUrl(value: string): string {
   try {
-    const url = new URL(value.replace(/^mongodb(\+srv)?:\/\//, 'https://'));
-    const pathname = value.includes('@')
-      ? value.split('@')[1]?.split('/')[0]
-      : url.host;
-    const db = value.split('/').pop()?.split('?')[0];
-    return `mongodb://***@${pathname}/${db ?? '?'}`;
+    // e.g. postgresql://***@localhost:5432/vionsys?schema=cms (credentials hidden)
+    const url = new URL(value);
+    const schema = url.searchParams.get('schema');
+    const db = url.pathname.replace(/^\//, '') || '?';
+    return `${url.protocol}//***@${url.host}/${db}${schema ? `?schema=${schema}` : ''}`;
   } catch {
     return maskSecret(value);
   }
